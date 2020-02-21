@@ -3,11 +3,15 @@ import std/parsecfg
 import std/strutils
 import std/streams
 
+import testutils/config
+
 const
   DefaultOses = @["linux", "macosx", "windows"]
 
 type
   TestSpec* = object
+    config*: TestConfig
+    path*: string
     name*: string
     skip*: bool
     program*: string
@@ -51,9 +55,11 @@ proc consumeConfigEvent(spec: var TestSpec; event: CfgEvent) =
       flag = "--define:$#:$#" % [event.key, event.value]
     spec.flags.add flag.quoteShell & " "
 
-proc parseTestFile*(filePath: string): TestSpec =
+proc parseTestFile*(filePath: string; config: TestConfig): TestSpec =
   ## parse a test input file into a spec
   result.defaults
+  result.path = filePath
+  result.config = config
   result.name = splitFile(filePath).name
   block:
     var
@@ -93,5 +99,5 @@ proc parseTestFile*(filePath: string): TestSpec =
     finally:
       close p
     if result.program == "":
-      # XXX crash?
+      # we catch this in testrunner and crash there if needed
       echo "Parsing error: no program value"

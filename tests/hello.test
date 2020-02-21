@@ -1,0 +1,3 @@
+program = "hello"
+[Output]
+stdout = "hello world\n"

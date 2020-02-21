@@ -130,7 +130,7 @@ proc cmpOutputs(test: TestSpec, stdout: string): TestStatus =
 
 proc compile(test: TestSpec): TestStatus =
   let
-    source = test.program.addFileExt(".nim")
+    source = test.config.path / test.program.addFileExt(".nim")
     cmd = "nim c $#$#$#" % [defaultOptions, test.flags, source.quoteShell]
     c = parseCmdLine(cmd)
   if not existsFile(source):
@@ -161,7 +161,7 @@ proc compile(test: TestSpec): TestStatus =
 
   # Lets also check file size here as it kinda belongs to the compilation result
   if test.maxSize != 0:
-    var size = getFileSize(test.program.addFileExt(ExeExt))
+    var size = getFileSize(test.config.path / test.program.addFileExt(ExeExt))
     if size > test.maxSize:
       logFailure(test, FileSizeTooLarge, $size)
       return FAILED
@@ -170,13 +170,13 @@ proc compile(test: TestSpec): TestStatus =
 
 proc execute(test: TestSpec): TestStatus =
   let
-    program = test.program.addFileExt(ExeExt)
+    program = test.config.path / test.program.addFileExt(ExeExt)
   if not existsFile(program):
     result = FAILED
     logFailure(test, ExeFileNotFound)
   else:
     let
-      (output, exitCode) = execCmdEx(CurDir & DirSep & program.quoteShell)
+      (output, exitCode) = execCmdEx(program.quoteShell)
     if exitCode != 0:
       # parseExecuteOutput() # Need to parse the run time failures?
       logFailure(test, RuntimeError, output)
@@ -198,7 +198,7 @@ proc test(config: TestConfig, testPath: string): TestStatus =
     duration: float
 
   time duration:
-    test = parseTestFile(testPath)
+    test = parseTestFile(testPath, config)
     test.flags &= (if config.releaseBuild: "-d:release " else: "-d:debug ")
     if not config.noThreads:
       test.flags &= "--threads:on "
@@ -215,12 +215,12 @@ proc test(config: TestConfig, testPath: string): TestStatus =
     if result != OK or test.compileError.len > 0:
       break
 
-    result = test.execute()
+    result = test.execute
     try:
       # this may fail in 64-bit AppVeyor images with "The process cannot
       # access the file because it is being used by another process.
       # [OSError]"
-      removeFile(test.program.addFileExt(ExeExt))
+      removeFile(test.config.path / test.program.addFileExt(ExeExt))
     except CatchableError as e:
       echo e.msg
 
