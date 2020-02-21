@@ -7,7 +7,7 @@ description   = "A unittest framework"
 license       = "Apache License 2.0"
 skipDirs      = @["tests"]
 bin           = @["testrunner"]
-srcDir        = @["testutils"]
+srcDir        = "testutils"
 
 requires "nim >= 1.0.2"
 
