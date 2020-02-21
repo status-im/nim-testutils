@@ -1,4 +1,5 @@
-# Testrunner
+# Testrunner [![Build Status](https://travis-ci.org/disruptek/testutils.svg?branch=master)](https://travis-ci.org/disruptek/testutils)
+
 ## Usage
 Command syntax:
 ```
@@ -62,3 +63,6 @@ file.log="""expected file output"""
 ```
 
 Triple quotes can be used for multiple lines.
+
+## License
+Apache2 or MIT

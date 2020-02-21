@@ -5,8 +5,9 @@ import std/terminal
 import std/times
 import std/pegs
 
-import testutils/config
 import testutils/spec
+import testutils/config
+import testutils/helpers
 
 ##[
 
@@ -51,7 +52,8 @@ type
     FileSizeTooLarge
     CompileErrorDiffers
 
-proc logFailure(test: TestSpec, error: TestError, data: varargs[string] = [""]) =
+proc logFailure(test: TestSpec; error: TestError;
+                data: varargs[string] = [""]) =
   case error
   of SourceFileNotFound:
     styledEcho(fgYellow, styleBright, "source file not found: ",
@@ -167,19 +169,20 @@ proc compile(test: TestSpec): TestStatus =
   return OK
 
 proc execute(test: TestSpec): TestStatus =
-  let program = test.program.addFileExt(ExeExt)
+  let
+    program = test.program.addFileExt(ExeExt)
   if not existsFile(program):
+    result = FAILED
     logFailure(test, ExeFileNotFound)
-    return FAILED
-
-  let (output, exitCode) = execCmdEx(CurDir & DirSep & program.quoteShell)
-
-  if exitCode != 0:
-    # parseExecuteOutput() # Need to parse the run time failures?
-    logFailure(test, RuntimeError, output)
-    return FAILED
   else:
-    return test.cmpOutputs(output)
+    let
+      (output, exitCode) = execCmdEx(CurDir & DirSep & program.quoteShell)
+    if exitCode != 0:
+      # parseExecuteOutput() # Need to parse the run time failures?
+      logFailure(test, RuntimeError, output)
+      result = FAILED
+    else:
+      result = test.cmpOutputs(output)
 
 proc scanTestPath(path: string): seq[string] =
   if fileExists(path):
@@ -190,17 +193,20 @@ proc scanTestPath(path: string): seq[string] =
         result.add file
 
 proc test(config: TestConfig, testPath: string): TestStatus =
-  var test: TestSpec
-  var duration: float
+  var
+    test: TestSpec
+    duration: float
 
   time duration:
     test = parseTestFile(testPath)
     test.flags &= (if config.releaseBuild: "-d:release " else: "-d:debug ")
     if not config.noThreads:
       test.flags &= "--threads:on "
+
     if test.program.len == 0: # a program name is bare minimum of a test file
       result = INVALID
       break
+
     if test.skip or hostOS notin test.os or config.shouldSkip(test.name):
       result = SKIPPED
       break
@@ -211,7 +217,9 @@ proc test(config: TestConfig, testPath: string): TestStatus =
 
     result = test.execute()
     try:
-      # this may fail in 64-bit AppVeyor images with "The process cannot access the file because it is being used by another process. [OSError]"
+      # this may fail in 64-bit AppVeyor images with "The process cannot
+      # access the file because it is being used by another process.
+      # [OSError]"
       removeFile(test.program.addFileExt(ExeExt))
     except CatchableError as e:
       echo e.msg
@@ -222,27 +230,27 @@ proc main() =
   let
     config = processArguments()
     testFiles = scanTestPath(config.path)
-  var successful, skipped = 0
+  var
+    successful, skipped = 0
 
   if testFiles.len == 0:
     styledEcho(styleBright, "No test files found")
     program_result = 1
-    return
+  else:
+    for testFile in testFiles:
+      # Here we could do multithread or multiprocess but we will have to
+      # work with different nim caches per test and also the executables
+      # have to be in a unique location as several tests can use the same
+      # source.
+      var result = test(config, testFile)
+      if result == OK:
+        successful += 1
+      elif result == SKIPPED:
+        skipped += 1
 
-  for testFile in testFiles:
-    # Here we could do multithread or multiprocess
-    # but we will have to work with different nim caches per test
-    # and also the executables have to be in a unique location as several tests
-    # can use the same source
-    var result = test(config, testFile)
-    if result == OK:
-      successful += 1
-    elif result == SKIPPED:
-      skipped += 1
-
-  styledEcho(styleBright, "Finished run: $#/$# tests successful" %
-                          [$successful, $(testFiles.len - skipped)])
-  program_result = testFiles.len - successful - skipped
+    styledEcho(styleBright, "Finished run: $#/$# tests successful" %
+                            [$successful, $(testFiles.len - skipped)])
+    program_result = testFiles.len - successful - skipped
 
 when isMainModule:
   main()
