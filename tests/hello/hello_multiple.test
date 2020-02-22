@@ -1,0 +1,7 @@
+program = "hello"
+
+[Output]
+args = "steve"
+stdout = "hello steve\n"
+args = "jeff"
+stdout = "hello jeff\n"

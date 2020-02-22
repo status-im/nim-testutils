@@ -2,6 +2,7 @@ import std/os
 import std/parsecfg
 import std/strutils
 import std/streams
+import std/sequtils
 
 import testutils/config
 
@@ -9,14 +10,17 @@ const
   DefaultOses = @["linux", "macosx", "windows"]
 
 type
-  TestSpec* = object
+  TestOutput = tuple[name: string, expectedOutput: string]
+  TestOutputs = seq[TestOutput]
+  TestSpec* = ref object
+    args*: string
     config*: TestConfig
     path*: string
     name*: string
     skip*: bool
     program*: string
     flags*: string
-    outputs*: seq[tuple[name: string, expectedOutput: string]]
+    outputs*: TestOutputs
     timestampPeg*: string
     errorMsg*: string
     maxSize*: int64
@@ -25,6 +29,18 @@ type
     errorLine*: int
     errorColumn*: int
     os*: seq[string]
+    child*: TestSpec
+
+proc clone*(spec: TestSpec): TestSpec =
+  result = new(TestSpec)
+  result[] = spec[]
+  result.outputs = newSeqOfCap[TestOutput](1)
+  result.args = ""
+  result.child = spec
+
+proc binary*(spec: TestSpec): string =
+  ## the output binary (execution input) of the test
+  result = spec.path.changeFileExt("").addFileExt(ExeExt)
 
 proc defaults(spec: var TestSpec) =
   ## assert some default values for a given spec
@@ -56,6 +72,7 @@ proc consumeConfigEvent(spec: var TestSpec; event: CfgEvent) =
 
 proc parseTestFile*(filePath: string; config: TestConfig): TestSpec =
   ## parse a test input file into a spec
+  result = new(TestSpec)
   result.defaults
   result.path = filePath
   result.config = config
@@ -82,11 +99,23 @@ proc parseTestFile*(filePath: string; config: TestConfig): TestSpec =
           # XXX crash?
           echo "Parsing warning:" & e.msg
         of cfgSectionStart:
-          if e.section.cmpIgnoreCase("Output") == 0:
-            outputSection = true
+          # starts with Output
+          outputSection = e.section.cmpIgnoreCase("Output") == 0
         of cfgKeyValuePair:
           if outputSection:
-            result.outputs.add((e.key, e.value))
+            if e.key.cmpIgnoreStyle("args") == 0:
+              # if this is the first args statement in the test,
+              # then we'll just use it.  otherwise, we'll clone
+              # ourselves and link to the test behind us.
+              if result.args.len == 0:
+                result.args = e.value
+              else:
+                # create our parent; the eternal chain
+                result = result.clone
+            else:
+              # guard against stupidly pointing at redundant outputs
+              result.outputs = result.outputs.filterIt it.name != e.key
+              result.outputs.add((e.key, e.value))
           else:
             result.consumeConfigEvent(e)
         of cfgOption:
