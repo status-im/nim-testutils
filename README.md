@@ -70,7 +70,10 @@ Specify command-line arguments as an escaped string in the following syntax:
 ```
 args="arg1 arg2 arg3"
 ```
-Each new `args` specification instantiates a new test execution with whatever the most recent outputs have been specified.
+
+Each new `args` specification instantiates a new test execution with the most
+recently-specified outputs.
+
 ```
 output="6"
 args="2 * 3"
