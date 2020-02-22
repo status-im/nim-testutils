@@ -61,8 +61,23 @@ name (stdout or filename) from within the "Output" section, e.g.:
 stdout="""expected stdout output"""
 file.log="""expected file output"""
 ```
-
 Triple quotes can be used for multiple lines.
+
+### Supplying Command-line Arguments
+
+Specify command-line arguments as an escaped string in the following syntax:
+
+```
+args="arg1 arg2 arg3"
+```
+Each new `args` specification instantiates a new test execution with whatever the most recent outputs have been specified.
+```
+output="6"
+args="2 * 3"
+args="3 * 2"
+output="7"
+args="3 + 4"
+```
 
 ## License
 Apache2 or MIT

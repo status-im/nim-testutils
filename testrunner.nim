@@ -60,7 +60,7 @@ proc logFailure(test: TestSpec; error: TestError;
                resetStyle, test.program.addFileExt(".nim"))
   of ExeFileNotFound:
     styledEcho(fgYellow, styleBright, "file not found: ",
-               resetStyle, test.program.addFileExt(ExeExt))
+               resetStyle, test.binary)
   of OutputFileNotFound:
     styledEcho(fgYellow, styleBright, "file not found: ",
                resetStyle, data[0])
@@ -131,7 +131,11 @@ proc cmpOutputs(test: TestSpec, stdout: string): TestStatus =
 proc compile(test: TestSpec): TestStatus =
   let
     source = test.config.path / test.program.addFileExt(".nim")
-    cmd = "nim c $#$#$#" % [defaultOptions, test.flags, source.quoteShell]
+    binary = test.binary
+    cmd = "nim c --out:$# $#$#$#" % [binary.quoteShell,
+                                    defaultOptions,
+                                    test.flags,
+                                    source.quoteShell]
     c = parseCmdLine(cmd)
   if not existsFile(source):
     logFailure(test, SourceFileNotFound)
@@ -161,7 +165,7 @@ proc compile(test: TestSpec): TestStatus =
 
   # Lets also check file size here as it kinda belongs to the compilation result
   if test.maxSize != 0:
-    var size = getFileSize(test.config.path / test.program.addFileExt(ExeExt))
+    var size = getFileSize(binary)
     if size > test.maxSize:
       logFailure(test, FileSizeTooLarge, $size)
       return FAILED
@@ -169,20 +173,26 @@ proc compile(test: TestSpec): TestStatus =
   return OK
 
 proc execute(test: TestSpec): TestStatus =
-  let
-    program = test.config.path / test.program.addFileExt(ExeExt)
-  if not existsFile(program):
-    result = FAILED
-    logFailure(test, ExeFileNotFound)
+  if test.child != nil:
+    result = test.child.execute
   else:
-    let
-      (output, exitCode) = execCmdEx(program.quoteShell)
-    if exitCode != 0:
-      # parseExecuteOutput() # Need to parse the run time failures?
-      logFailure(test, RuntimeError, output)
+    var
+      cmd = test.binary
+    if not existsFile(cmd):
       result = FAILED
+      logFailure(test, ExeFileNotFound)
     else:
-      result = test.cmpOutputs(output)
+      cmd = cmd.quoteShell & " " & test.args
+      let
+        (output, exitCode) = execCmdEx(cmd)
+      if exitCode != 0:
+        # parseExecuteOutput() # Need to parse the run time failures?
+        logFailure(test, RuntimeError, output)
+        result = FAILED
+      else:
+        result = test.cmpOutputs(output)
+    if test.child != nil:
+      result = test.child.execute
 
 proc scanTestPath(path: string): seq[string] =
   if fileExists(path):
@@ -220,7 +230,7 @@ proc test(config: TestConfig, testPath: string): TestStatus =
       # this may fail in 64-bit AppVeyor images with "The process cannot
       # access the file because it is being used by another process.
       # [OSError]"
-      removeFile(test.config.path / test.program.addFileExt(ExeExt))
+      removeFile(test.binary)
     except CatchableError as e:
       echo e.msg
 
