@@ -38,10 +38,9 @@ proc consumeConfigEvent(spec: var TestSpec; event: CfgEvent) =
   of "timestamp_peg":
     spec.timestampPeg = event.value
   of "max_size":
-    if event.value[0].isDigit:
+    try:
       spec.maxSize = parseInt(event.value)
-    else:
-      # XXX crash?
+    except ValueError:
       echo "Parsing warning: value of " & event.key &
            " is not a number (value = " & event.value & ")."
   of "compile_error":
