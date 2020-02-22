@@ -74,7 +74,7 @@ proc parseTestFile*(filePath: string; config: TestConfig): TestSpec =
   ## parse a test input file into a spec
   result = new(TestSpec)
   result.defaults
-  result.path = filePath
+  result.path = absolutePath(filePath)
   result.config = config
   result.name = splitFile(filePath).name
   block:

@@ -85,6 +85,15 @@ proc logFailure(test: TestSpec; error: TestError;
              "nim c $#$#$#" % [defaultOptions, test.flags,
                                  test.program.addFileExt(".nim")])
 
+template withinDir(dir: string; body: untyped): untyped =
+  let
+    cwd = getCurrentDir()
+  setCurrentDir(dir)
+  try:
+    body
+  finally:
+    setCurrentDir(cwd)
+
 proc logResult(testName: string, status: TestStatus, time: float) =
   var color = case status
               of OK: fgGreen
@@ -182,15 +191,16 @@ proc execute(test: TestSpec): TestStatus =
       result = FAILED
       logFailure(test, ExeFileNotFound)
     else:
-      cmd = cmd.quoteShell & " " & test.args
-      let
-        (output, exitCode) = execCmdEx(cmd)
-      if exitCode != 0:
-        # parseExecuteOutput() # Need to parse the run time failures?
-        logFailure(test, RuntimeError, output)
-        result = FAILED
-      else:
-        result = test.cmpOutputs(output)
+      withinDir parentDir(cmd):
+        cmd = cmd.quoteShell & " " & test.args
+        let
+          (output, exitCode) = execCmdEx(cmd)
+        if exitCode != 0:
+          # parseExecuteOutput() # Need to parse the run time failures?
+          logFailure(test, RuntimeError, output)
+          result = FAILED
+        else:
+          result = test.cmpOutputs(output)
     if test.child != nil:
       result = test.child.execute
 
