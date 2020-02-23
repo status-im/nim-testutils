@@ -18,7 +18,7 @@ proc execCmd(cmd: string) =
 proc execTest(test: string) =
   let
     test = "testrunner " & test
-  when false:
+  when true:
     execCmd "nim c           -f -r " & test
     execCmd "nim c   -d:release -r " & test
     execCmd "nim c   -d:danger  -r " & test
