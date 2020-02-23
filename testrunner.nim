@@ -1,3 +1,4 @@
+import std/strtabs
 import std/os
 import std/osproc
 import std/strutils
@@ -110,32 +111,38 @@ template time(duration, body): untyped =
     body
   duration =  epochTime() - t0
 
-proc cmpOutputs(test: TestSpec, stdout: string): TestStatus =
-  result = OK
-  for output in test.outputs:
-    var testOutput: string
-    if output.name == "stdout":
-      testOutput = stdout
+proc composeOutputs(test: TestSpec, stdout: string): TestOutputs =
+  result = newTestOutputs()
+  for name, expected in test.outputs.pairs:
+    if name == "stdout":
+      result[name] = stdout
     else:
-      if not existsFile(output.name):
-        logFailure(test, OutputFileNotFound, output.name)
-        result = FAILED
+      if not existsFile(name):
         continue
+      result[name] = readFile(name)
+      removeFile(name)
 
-      testOutput = readFile(output.name)
+proc cmpOutputs(test: TestSpec, outputs: TestOutputs): TestStatus =
+  result = OK
+  for name, expected in test.outputs.pairs:
+    if name notin outputs:
+      logFailure(test, OutputFileNotFound, name)
+      result = FAILED
+      continue
+
+    let
+      testOutput = outputs[name]
 
     # Would be nice to do a real diff here instead of simple compare
     if test.timestampPeg.len > 0:
-      if not cmpIgnorePegs(testOutput, output.expectedOutput, peg(test.timestampPeg), pegXid):
-        logFailure(test, OutputsDiffer, output.name, output.expectedOutput, testOutput)
+      if not cmpIgnorePegs(testOutput, expected,
+                           peg(test.timestampPeg), pegXid):
+        logFailure(test, OutputsDiffer, name, expected, testOutput)
         result = FAILED
     else:
-      if not cmpIgnoreDefaultTimestamps(testOutput, output.expectedOutput):
-        logFailure(test, OutputsDiffer, output.name, output.expectedOutput, testOutput)
+      if not cmpIgnoreDefaultTimestamps(testOutput, expected):
+        logFailure(test, OutputsDiffer, name, expected, testOutput)
         result = FAILED
-
-    if output.name != "stdout":
-      removeFile(output.name)
 
 proc compile(test: TestSpec): TestStatus =
   let
@@ -200,7 +207,9 @@ proc execute(test: TestSpec): TestStatus =
           logFailure(test, RuntimeError, output)
           result = FAILED
         else:
-          result = test.cmpOutputs(output)
+          let
+            outputs = test.composeOutputs(output)
+          result = test.cmpOutputs(outputs)
     if test.child != nil:
       result = test.child.execute
 
