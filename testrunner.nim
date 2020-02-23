@@ -1,3 +1,4 @@
+import std/strtabs
 import std/os
 import std/osproc
 import std/strutils
@@ -110,32 +111,38 @@ template time(duration, body): untyped =
     body
   duration =  epochTime() - t0
 
-proc cmpOutputs(test: TestSpec, stdout: string): TestStatus =
-  result = OK
-  for output in test.outputs:
-    var testOutput: string
-    if output.name == "stdout":
-      testOutput = stdout
+proc composeOutputs(test: TestSpec, stdout: string): TestOutputs =
+  result = newTestOutputs()
+  for name, expected in test.outputs.pairs:
+    if name == "stdout":
+      result[name] = stdout
     else:
-      if not existsFile(output.name):
-        logFailure(test, OutputFileNotFound, output.name)
-        result = FAILED
+      if not existsFile(name):
         continue
+      result[name] = readFile(name)
+      removeFile(name)
 
-      testOutput = readFile(output.name)
+proc cmpOutputs(test: TestSpec, outputs: TestOutputs): TestStatus =
+  result = OK
+  for name, expected in test.outputs.pairs:
+    if name notin outputs:
+      logFailure(test, OutputFileNotFound, name)
+      result = FAILED
+      continue
+
+    let
+      testOutput = outputs[name]
 
     # Would be nice to do a real diff here instead of simple compare
     if test.timestampPeg.len > 0:
-      if not cmpIgnorePegs(testOutput, output.expectedOutput, peg(test.timestampPeg), pegXid):
-        logFailure(test, OutputsDiffer, output.name, output.expectedOutput, testOutput)
+      if not cmpIgnorePegs(testOutput, expected,
+                           peg(test.timestampPeg), pegXid):
+        logFailure(test, OutputsDiffer, name, expected, testOutput)
         result = FAILED
     else:
-      if not cmpIgnoreDefaultTimestamps(testOutput, output.expectedOutput):
-        logFailure(test, OutputsDiffer, output.name, output.expectedOutput, testOutput)
+      if not cmpIgnoreDefaultTimestamps(testOutput, expected):
+        logFailure(test, OutputsDiffer, name, expected, testOutput)
         result = FAILED
-
-    if output.name != "stdout":
-      removeFile(output.name)
 
 proc compile(test: TestSpec): TestStatus =
   let
@@ -184,25 +191,32 @@ proc compile(test: TestSpec): TestStatus =
 proc execute(test: TestSpec): TestStatus =
   if test.child != nil:
     result = test.child.execute
+  if result notin {OK, SKIPPED}:
+    return
+  var
+    cmd = test.binary
+  if not existsFile(cmd):
+    result = FAILED
+    logFailure(test, ExeFileNotFound)
   else:
-    var
-      cmd = test.binary
-    if not existsFile(cmd):
-      result = FAILED
-      logFailure(test, ExeFileNotFound)
-    else:
-      withinDir parentDir(cmd):
-        cmd = cmd.quoteShell & " " & test.args
+    withinDir parentDir(cmd):
+      cmd = cmd.quoteShell & " " & test.args
+      let
+        (output, exitCode) = execCmdEx(cmd)
+      if exitCode != 0:
+        # parseExecuteOutput() # Need to parse the run time failures?
+        logFailure(test, RuntimeError, output)
+        result = FAILED
+      else:
         let
-          (output, exitCode) = execCmdEx(cmd)
-        if exitCode != 0:
-          # parseExecuteOutput() # Need to parse the run time failures?
-          logFailure(test, RuntimeError, output)
-          result = FAILED
-        else:
-          result = test.cmpOutputs(output)
-    if test.child != nil:
-      result = test.child.execute
+          outputs = test.composeOutputs(output)
+        result = test.cmpOutputs(outputs)
+        # perform an update of the testfile if requested and required
+        if test.config.update and result == FAILED:
+          test.rewriteTestFile(outputs)
+          # we'll call this a `skip` because it's not strictly a failure
+          # and we want any dependent testing to proceed as usual.
+          result = SKIPPED
 
 proc scanTestPath(path: string): seq[string] =
   if fileExists(path):

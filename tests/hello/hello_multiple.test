@@ -1,7 +1,15 @@
 program = "hello"
 
+# my aim is true
 [Output]
-args = "steve"
-stdout = "hello steve\n"
-args = "jeff"
-stdout = "hello jeff\n"
+stdout = "hello world\n"
+
+# option 2
+[Output_larry_is_a_good_boy]
+args = "larry"
+stdout = "hello larry\n"
+
+# option 47
+[Output_stevie_is_a_good_boy]
+args = "stephen"
+stdout = "hello stephen\n"

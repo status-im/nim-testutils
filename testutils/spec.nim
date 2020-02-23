@@ -2,7 +2,7 @@ import std/os
 import std/parsecfg
 import std/strutils
 import std/streams
-import std/sequtils
+import std/strtabs
 
 import testutils/config
 
@@ -10,9 +10,9 @@ const
   DefaultOses = @["linux", "macosx", "windows"]
 
 type
-  TestOutput = tuple[name: string, expectedOutput: string]
-  TestOutputs = seq[TestOutput]
+  TestOutputs* = StringTableRef
   TestSpec* = ref object
+    section*: string
     args*: string
     config*: TestConfig
     path*: string
@@ -20,6 +20,7 @@ type
     skip*: bool
     program*: string
     flags*: string
+    preamble*: seq[tuple[key: string; value: string]]
     outputs*: TestOutputs
     timestampPeg*: string
     errorMsg*: string
@@ -31,10 +32,14 @@ type
     os*: seq[string]
     child*: TestSpec
 
+proc newTestOutputs*(): StringTableRef =
+  result = newStringTable(mode = modeStyleInsensitive)
+
 proc clone*(spec: TestSpec): TestSpec =
+  ## create the parent of this test and set the child reference appropriately
   result = new(TestSpec)
   result[] = spec[]
-  result.outputs = newSeqOfCap[TestOutput](1)
+  result.outputs = newTestOutputs()
   result.args = ""
   result.child = spec
 
@@ -45,9 +50,13 @@ proc binary*(spec: TestSpec): string =
 proc defaults(spec: var TestSpec) =
   ## assert some default values for a given spec
   spec.os = DefaultOses
+  spec.outputs = newTestOutputs()
 
 proc consumeConfigEvent(spec: var TestSpec; event: CfgEvent) =
   ## parse a specification supplied prior to any sections
+
+  # save the key/value pair in case we need to write out the test file
+  spec.preamble.add (key: event.key, value: event.value)
   case event.key
   of "program":
     spec.program = event.value
@@ -69,6 +78,23 @@ proc consumeConfigEvent(spec: var TestSpec; event: CfgEvent) =
     let
       flag = "--define:$#:$#" % [event.key, event.value]
     spec.flags.add flag.quoteShell & " "
+
+proc rewriteTestFile*(spec: TestSpec; outputs: TestOutputs) =
+  ## rewrite a test file with updated outputs after having run the tests
+  var
+    test = loadConfig(spec.path)
+  # take the opportunity to update an args statement if necessary
+  if spec.args != "":
+    test.setSectionKey(spec.section, "args", spec.args)
+  else:
+    test.delSectionKey(spec.section, "args")
+  # delete the old test outputs for completeness
+  for name, expected in spec.outputs.pairs:
+    test.delSectionKey(spec.section, name)
+  # add the new test outputs
+  for name, expected in outputs.pairs:
+    test.setSectionKey(spec.section, name, expected)
+  test.writeConfig(spec.path)
 
 proc parseTestFile*(filePath: string; config: TestConfig): TestSpec =
   ## parse a test input file into a spec
@@ -100,22 +126,18 @@ proc parseTestFile*(filePath: string; config: TestConfig): TestSpec =
           echo "Parsing warning:" & e.msg
         of cfgSectionStart:
           # starts with Output
-          outputSection = e.section.cmpIgnoreCase("Output") == 0
+          if e.section[0..len"Output"-1].cmpIgnoreCase("Output") == 0:
+            if outputSection:
+              # create our parent; the eternal chain
+              result = result.clone
+            outputSection = true
+            result.section = e.section
         of cfgKeyValuePair:
           if outputSection:
             if e.key.cmpIgnoreStyle("args") == 0:
-              # if this is the first args statement in the test,
-              # then we'll just use it.  otherwise, we'll clone
-              # ourselves and link to the test behind us.
-              if result.args.len == 0:
-                result.args = e.value
-              else:
-                # create our parent; the eternal chain
-                result = result.clone
+              result.args = e.value
             else:
-              # guard against stupidly pointing at redundant outputs
-              result.outputs = result.outputs.filterIt it.name != e.key
-              result.outputs.add((e.key, e.value))
+              result.outputs[e.key] = e.value
           else:
             result.consumeConfigEvent(e)
         of cfgOption:
