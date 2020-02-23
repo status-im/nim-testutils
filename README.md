@@ -71,15 +71,15 @@ Specify command-line arguments as an escaped string in the following syntax:
 args="arg1 arg2 arg3"
 ```
 
-Each new `args` specification instantiates a new test execution with the most
-recently-specified outputs.
+Each new `args` specification instantiates a new test execution with the most-recently-specified outputs.
 
 ```
-output="6"
-args="2 * 3"
-args="3 * 2"
-output="7"
+stdout="6"
+args="2 \* 3"  # shell escapes are necessary
+args="3 \* 2"  # implicitly reuse existing output definitions
+
 args="3 + 4"
+stdout="7"
 ```
 
 ## License
