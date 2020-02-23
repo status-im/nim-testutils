@@ -10,6 +10,7 @@ Options:
 --targets:"c c++ js objc" [Not implemented] Run tests for specified targets
 --include:"test1 test2"   Run only listed tests (space/comma seperated)
 --exclude:"test1 test2"   Skip listed tests (space/comma seperated)
+--update                  Rewrite failed tests with new output
 --help                    Display this help and exit
 ```
 
@@ -55,32 +56,46 @@ added in a test file:
 
 ### Outputs
 For outputs to be compared, the output string should be set to the output
-name (stdout or filename) from within the "Output" section, e.g.:
+name (stdout or filename) from within an _Output_ section:
+
 ```
 [Output]
 stdout="""expected stdout output"""
 file.log="""expected file output"""
 ```
+
 Triple quotes can be used for multiple lines.
 
 ### Supplying Command-line Arguments
 
-Specify command-line arguments as an escaped string in the following syntax:
+Optionally specify command-line arguments as an escaped string in the following
+syntax inside any _Output_ section:
 
 ```
-args="arg1 arg2 arg3"
+[Output]
+args = "--title \"useful title\""
 ```
 
-Each new `args` specification instantiates a new test execution with the most-recently-specified outputs.
+### Multiple Invocations
+
+Multiple _Output_ sections denote multiple test program invocations. Any
+failure of the test program to match its expected outputs will short-circuit
+and fail the test.
 
 ```
-stdout="6"
-args="2 \* 3"  # shell escapes are necessary
-args="3 \* 2"  # implicitly reuse existing output definitions
+[Output]
+stdout = ""
+args = "--no-output"
 
-args="3 + 4"
-stdout="7"
+[Output_newlines]
+stdout = "\n\n"
+args = "--newlines"
 ```
+
+### Updating Expected Outputs
+
+Pass the `--update` argument to `testrunner` to rewrite any failing test with
+the new outputs of the test.
 
 ## License
 Apache2 or MIT

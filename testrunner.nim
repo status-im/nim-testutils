@@ -191,27 +191,32 @@ proc compile(test: TestSpec): TestStatus =
 proc execute(test: TestSpec): TestStatus =
   if test.child != nil:
     result = test.child.execute
+  if result notin {OK, SKIPPED}:
+    return
+  var
+    cmd = test.binary
+  if not existsFile(cmd):
+    result = FAILED
+    logFailure(test, ExeFileNotFound)
   else:
-    var
-      cmd = test.binary
-    if not existsFile(cmd):
-      result = FAILED
-      logFailure(test, ExeFileNotFound)
-    else:
-      withinDir parentDir(cmd):
-        cmd = cmd.quoteShell & " " & test.args
+    withinDir parentDir(cmd):
+      cmd = cmd.quoteShell & " " & test.args
+      let
+        (output, exitCode) = execCmdEx(cmd)
+      if exitCode != 0:
+        # parseExecuteOutput() # Need to parse the run time failures?
+        logFailure(test, RuntimeError, output)
+        result = FAILED
+      else:
         let
-          (output, exitCode) = execCmdEx(cmd)
-        if exitCode != 0:
-          # parseExecuteOutput() # Need to parse the run time failures?
-          logFailure(test, RuntimeError, output)
-          result = FAILED
-        else:
-          let
-            outputs = test.composeOutputs(output)
-          result = test.cmpOutputs(outputs)
-    if test.child != nil:
-      result = test.child.execute
+          outputs = test.composeOutputs(output)
+        result = test.cmpOutputs(outputs)
+        # perform an update of the testfile if requested and required
+        if test.config.update and result == FAILED:
+          test.rewriteTestFile(outputs)
+          # we'll call this a `skip` because it's not strictly a failure
+          # and we want any dependent testing to proceed as usual.
+          result = SKIPPED
 
 proc scanTestPath(path: string): seq[string] =
   if fileExists(path):

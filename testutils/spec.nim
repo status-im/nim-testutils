@@ -36,6 +36,7 @@ proc newTestOutputs*(): StringTableRef =
   result = newStringTable(mode = modeStyleInsensitive)
 
 proc clone*(spec: TestSpec): TestSpec =
+  ## create the parent of this test and set the child reference appropriately
   result = new(TestSpec)
   result[] = spec[]
   result.outputs = newTestOutputs()
@@ -78,13 +79,20 @@ proc consumeConfigEvent(spec: var TestSpec; event: CfgEvent) =
       flag = "--define:$#:$#" % [event.key, event.value]
     spec.flags.add flag.quoteShell & " "
 
-proc rewriteTestFile*(spec: TestSpec) =
+proc rewriteTestFile*(spec: TestSpec; outputs: TestOutputs) =
   ## rewrite a test file with updated outputs after having run the tests
   var
     test = loadConfig(spec.path)
+  # take the opportunity to update an args statement if necessary
   if spec.args != "":
     test.setSectionKey(spec.section, "args", spec.args)
+  else:
+    test.delSectionKey(spec.section, "args")
+  # delete the old test outputs for completeness
   for name, expected in spec.outputs.pairs:
+    test.delSectionKey(spec.section, name)
+  # add the new test outputs
+  for name, expected in outputs.pairs:
     test.setSectionKey(spec.section, name, expected)
   test.writeConfig(spec.path)
 
@@ -118,18 +126,15 @@ proc parseTestFile*(filePath: string; config: TestConfig): TestSpec =
           echo "Parsing warning:" & e.msg
         of cfgSectionStart:
           # starts with Output
-          if e.section.cmpIgnoreCase("Output") == 0:
+          if e.section[0..len"Output"-1].cmpIgnoreCase("Output") == 0:
+            if outputSection:
+              # create our parent; the eternal chain
+              result = result.clone
             outputSection = true
             result.section = e.section
         of cfgKeyValuePair:
           if outputSection:
             if e.key.cmpIgnoreStyle("args") == 0:
-              # if this is the first args statement in the test,
-              # then we'll just use it.  otherwise, we'll clone
-              # ourselves and link to the test behind us, first.
-              if result.args.len != 0:
-                # create our parent; the eternal chain
-                result = result.clone
               result.args = e.value
             else:
               result.outputs[e.key] = e.value

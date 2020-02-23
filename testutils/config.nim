@@ -12,6 +12,7 @@ Options:
   --targets:"c c++ js objc" [Not implemented] Run tests for specified targets
   --include:"test1 test2"   Run only listed tests (space/comma seperated)
   --exclude:"test1 test2"   Skip listed tests (space/comma seperated)
+  --update                  Rewrite failed tests with new output
   --help                    Display this help and exit
 
   """.unindent.strip
@@ -19,6 +20,7 @@ Options:
 type
   TestConfig* = object
     path*: string
+    update*: bool
     includedTests*: seq[string]
     excludedTests*: seq[string]
     releaseBuild*: bool
@@ -45,6 +47,8 @@ proc processArguments*(): TestConfig =
         result.noThreads = true
       of "targets", "t":
         discard # not implemented
+      of "update":
+        result.update = true
       of "include":
         result.includedTests.add value.split(Whitespace + {','})
       of "exclude":
