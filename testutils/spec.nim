@@ -106,12 +106,11 @@ proc parseTestFile*(filePath: string; config: TestConfig): TestSpec =
             if e.key.cmpIgnoreStyle("args") == 0:
               # if this is the first args statement in the test,
               # then we'll just use it.  otherwise, we'll clone
-              # ourselves and link to the test behind us.
-              if result.args.len == 0:
-                result.args = e.value
-              else:
+              # ourselves and link to the test behind us, first.
+              if result.args.len != 0:
                 # create our parent; the eternal chain
                 result = result.clone
+              result.args = e.value
             else:
               # guard against stupidly pointing at redundant outputs
               result.outputs = result.outputs.filterIt it.name != e.key
