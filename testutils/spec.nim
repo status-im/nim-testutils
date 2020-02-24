@@ -20,7 +20,6 @@ type
     skip*: bool
     program*: string
     flags*: string
-    preamble*: seq[tuple[key: string; value: string]]
     outputs*: TestOutputs
     timestampPeg*: string
     errorMsg*: string
