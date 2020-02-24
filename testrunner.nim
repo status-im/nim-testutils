@@ -26,7 +26,8 @@ const
   # defaultOptions = "--verbosity:1 --warnings:off --hint[Processing]:off " &
   #                  "--hint[Conf]:off --hint[XDeclaredButNotUsed]:off " &
   #                  "--hint[Link]:off --hint[Pattern]:off"
-  defaultOptions = "--verbosity:1 --warnings:off "
+  defaultOptions = "--verbosity:1 --warnings:on "
+  🎉 = -1
 
 type
   TestStatus* = enum
@@ -43,6 +44,12 @@ type
      fileSize: uint
   ]#
 
+  ThreadPayload = object
+    core: int
+    spec: TestSpec
+    recurse: bool
+
+  TestThread = Thread[ThreadPayload]
   TestError* = enum
     SourceFileNotFound
     ExeFileNotFound
@@ -147,54 +154,78 @@ proc cmpOutputs(test: TestSpec, outputs: TestOutputs): TestStatus =
 proc compile(test: TestSpec): TestStatus =
   let
     source = test.config.path / test.program.addFileExt(".nim")
-    binary = test.binary
-    cmd = "nim c --out:$# $#$#$#" % [binary.quoteShell,
-                                    defaultOptions,
-                                    test.flags,
-                                    source.quoteShell]
-    c = parseCmdLine(cmd)
+
   if not existsFile(source):
     logFailure(test, SourceFileNotFound)
-    return FAILED
+    result = FAILED
+    return
 
-  var
-    p = startProcess(command=c[0], args=c[1.. ^1],
-                     options={poStdErrToStdOut, poUsePath})
-  defer:
-    close(p)
-  let
-    compileInfo = parseCompileStream(p, p.outputStream)
+  for backend in test.config.backends.items:
+    let
+      binary = test.binary(backend)
+    var
+      cmd = findExe("nim")
+    cmd &= " " & backend
+    cmd &= " --nimcache:" & test.config.cache(backend)
+    cmd &= " --out:" & binary
+    cmd &= " " & defaultOptions
+    cmd &= " " & test.flags
+    cmd &= " " & source.quoteShell
+    var
+      c = parseCmdLine(cmd)
+      p = startProcess(command=c[0], args=c[1.. ^1],
+                       options={poStdErrToStdOut, poUsePath})
 
-  if compileInfo.exitCode != 0:
-    if test.compileError.len == 0:
-      logFailure(test, CompileError, compileInfo.fullMsg)
-      return FAILED
-    else:
-      if test.compileError == compileInfo.msg and
-         (test.errorFile.len == 0 or test.errorFile == compileInfo.errorFile) and
-         (test.errorLine == 0 or test.errorLine == compileInfo.errorLine) and
-         (test.errorColumn == 0 or test.errorColumn == compileInfo.errorColumn):
-        return OK
-      else:
-        logFailure(test, CompileErrorDiffers, compileInfo.fullMsg)
-        return FAILED
+    try:
+      let
+        compileInfo = parseCompileStream(p, p.outputStream)
 
-  # Lets also check file size here as it kinda belongs to the compilation result
-  if test.maxSize != 0:
-    var size = getFileSize(binary)
-    if size > test.maxSize:
-      logFailure(test, FileSizeTooLarge, $size)
-      return FAILED
+      if compileInfo.exitCode != 0:
+        if test.compileError.len == 0:
+          logFailure(test, CompileError, compileInfo.fullMsg)
+          result = FAILED
+          break
+        else:
+          if test.compileError == compileInfo.msg and
+             (test.errorFile.len == 0 or test.errorFile == compileInfo.errorFile) and
+             (test.errorLine == 0 or test.errorLine == compileInfo.errorLine) and
+             (test.errorColumn == 0 or test.errorColumn == compileInfo.errorColumn):
+            result = OK
+          else:
+            logFailure(test, CompileErrorDiffers, compileInfo.fullMsg)
+            result = FAILED
+            break
 
-  return OK
+      # Lets also check file size here as it kinda belongs to the compilation result
+      if test.maxSize != 0:
+        var size = getFileSize(binary)
+        if size > test.maxSize:
+          logFailure(test, FileSizeTooLarge, $size)
+          result = FAILED
+
+      result = OK
+    finally:
+      close(p)
+
+proc threadedExecute(payload: ThreadPayload) {.thread.}
+
+proc spawnTest(child: var Thread[ThreadPayload]; test: TestSpec;
+               core: int): bool =
+  assert core >= 0
+  child.createThread(threadedExecute,
+                     ThreadPayload(core: core, spec: test))
+  if CpuAffinity in test.config.flags:
+    if core < countProcessors():
+      child.pinToCpu core
+      result = true
 
 proc execute(test: TestSpec): TestStatus =
-  if test.child != nil:
-    result = test.child.execute
-  if result notin {OK, SKIPPED}:
-    return
   var
     cmd = test.binary
+  # output the test stage if necessary
+  if test.stage.len > 0:
+    echo 20.spaces & test.stage
+
   if not existsFile(cmd):
     result = FAILED
     logFailure(test, ExeFileNotFound)
@@ -212,11 +243,48 @@ proc execute(test: TestSpec): TestStatus =
           outputs = test.composeOutputs(output)
         result = test.cmpOutputs(outputs)
         # perform an update of the testfile if requested and required
-        if test.config.update and result == FAILED:
+        if UpdateOutputs in test.config.flags and result == FAILED:
           test.rewriteTestFile(outputs)
           # we'll call this a `skip` because it's not strictly a failure
           # and we want any dependent testing to proceed as usual.
           result = SKIPPED
+
+proc executeTestChain(test: TestSpec; core: int): TestStatus =
+  # don't try this in python
+  when compileOption("threads"):
+    try:
+      var
+        thread: TestThread
+      assert core == 🎉
+      discard thread.spawnTest(test, core + 1)
+      thread.joinThreads
+    except:
+      # any thread(?) exception is a failure
+      result = FAILED
+  else:
+    # unthreaded serial test execution
+    result = test.execute
+    if test.child != nil and result in {OK, SKIPPED}:
+      result = test.child.execute
+
+proc threadedExecute(payload: ThreadPayload) {.thread.} =
+  var
+    result = FAILED
+  if payload.spec.child == nil:
+    {.gcsafe.}:
+      result = payload.spec.execute
+  else:
+    try:
+      var
+        child: TestThread
+      discard child.spawnTest(payload.spec.child, payload.core + 1)
+      {.gcsafe.}:
+        result = payload.spec.execute
+      child.joinThreads
+    except:
+      result = FAILED
+  if result == FAILED:
+    raise newException(Exception, "i'm a terrible person")
 
 proc scanTestPath(path: string): seq[string] =
   if fileExists(path):
@@ -233,9 +301,8 @@ proc test(config: TestConfig, testPath: string): TestStatus =
 
   time duration:
     test = parseTestFile(testPath, config)
-    test.flags &= (if config.releaseBuild: "-d:release " else: "-d:debug ")
-    if not config.noThreads:
-      test.flags &= "--threads:on "
+    for flag in config.flags * compilerFlags:
+      test.flags &= " " & $flag
 
     if test.program.len == 0: # a program name is bare minimum of a test file
       result = INVALID
@@ -249,7 +316,7 @@ proc test(config: TestConfig, testPath: string): TestStatus =
     if result != OK or test.compileError.len > 0:
       break
 
-    result = test.execute
+    result = test.executeTestChain(🎉)  # get this party started
     try:
       # this may fail in 64-bit AppVeyor images with "The process cannot
       # access the file because it is being used by another process.

@@ -1,5 +1,8 @@
+import std/hashes
+import std/os
 import std/parseopt
 import std/strutils
+import std/algorithm
 
 const
   Usage = """
@@ -18,13 +21,56 @@ Options:
   """.unindent.strip
 
 type
+  FlagKind* = enum
+    UpdateOutputs = "--update"
+    UseThreads = "--threads:on"
+    DebugBuild = "--define:debug"
+    ReleaseBuild = "--define:release"
+    DangerBuild = "--define:danger"
+    CpuAffinity = "--affinity"
+
   TestConfig* = object
     path*: string
-    update*: bool
     includedTests*: seq[string]
     excludedTests*: seq[string]
-    releaseBuild*: bool
-    noThreads*: bool
+
+    flags*: set[FlagKind]
+    # options
+    backendNames*: seq[string]
+
+const
+  defaultFlags = {UseThreads}
+  compilerFlags* = {DebugBuild, ReleaseBuild, DangerBuild, UseThreads}
+  # --define:testutilsBackends="cpp js"
+  testutilsBackends {.strdefine.} = "c"
+
+proc `backends=`*(config: var TestConfig; inputs: seq[string]) =
+  config.backendNames = inputs.sorted
+
+proc `backends=`*(config: var TestConfig; input: string) =
+  config.backends = input.split(" ")
+
+proc newTestConfig*(options = defaultFlags): TestConfig =
+  result.flags = options
+  result.backends = testutilsBackends
+
+proc backends*(config: TestConfig): seq[string] =
+  result = config.backendNames
+
+proc hash*(config: TestConfig): Hash =
+  var h: Hash = 0
+  h = h !& config.backends.hash
+  h = h !& hash(ReleaseBuild in config.flags)
+  h = h !& hash(DangerBuild in config.flags)
+  h = h !& hash(UseThreads notin config.flags)
+  result = !$h
+
+proc cache*(config: TestConfig; backend: string): string =
+  ## return the path to the nimcache for the given backend and
+  ## compile-time flags
+  result = getTempDir()
+  result = result / "testutils-nimcache-$#-$#" % [ backend,
+                                                   $getCurrentProcessId() ]
 
 proc processArguments*(): TestConfig =
   ## consume the arguments supplied to testrunner and yield a computed
@@ -32,6 +78,7 @@ proc processArguments*(): TestConfig =
   var
     opt = initOptParser()
 
+  result = newTestConfig()
   for kind, key, value in opt.getOpt:
     case kind
     of cmdArgument:
@@ -41,14 +88,17 @@ proc processArguments*(): TestConfig =
       case key.toLowerAscii
       of "help", "h":
         quit(Usage, QuitSuccess)
-      of "release":
-        result.releaseBuild = true
+      of "backend", "backends":
+        result.backends = value
+      of "release", "danger":
+        result.flags.incl ReleaseBuild
+        result.flags.incl DangerBuild
       of "nothreads":
-        result.noThreads = true
+        result.flags.excl UseThreads
       of "targets", "t":
         discard # not implemented
       of "update":
-        result.update = true
+        result.flags.incl UpdateOutputs
       of "include":
         result.includedTests.add value.split(Whitespace + {','})
       of "exclude":

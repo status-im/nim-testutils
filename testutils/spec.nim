@@ -1,3 +1,4 @@
+import std/hashes
 import std/os
 import std/parsecfg
 import std/strutils
@@ -31,6 +32,13 @@ type
     os*: seq[string]
     child*: TestSpec
 
+proc hash*(spec: TestSpec): Hash =
+  var h: Hash = 0
+  h = h !& spec.config.hash
+  h = h !& spec.flags.hash
+  h = h !& spec.os.hash
+  result = !$h
+
 proc newTestOutputs*(): StringTableRef =
   result = newStringTable(mode = modeStyleInsensitive)
 
@@ -41,6 +49,18 @@ proc clone*(spec: TestSpec): TestSpec =
   result.outputs = newTestOutputs()
   result.args = ""
   result.child = spec
+
+func stage*(spec: TestSpec): string =
+  ## the name of the output section for the test
+  ## Output_test_section_name
+  let
+    # @["", "test_section_name"]
+    names = spec.section.split("Output")
+  result = names[^1].replace("_", " ").strip
+
+proc binary*(spec: TestSpec; backend: string): string =
+  ## some day this will make more sense
+  result = spec.path.changeFileExt("").addFileExt(ExeExt)
 
 proc binary*(spec: TestSpec): string =
   ## the output binary (execution input) of the test
@@ -70,6 +90,12 @@ proc consumeConfigEvent(spec: var TestSpec; event: CfgEvent) =
     spec.errorFile = event.value
   of "os":
     spec.os = event.value.normalize.split({','} + Whitespace)
+  of "affinity":
+    spec.config.flags.incl CpuAffinity
+  of "threads":
+    spec.config.flags.incl UseThreads
+  of "nothreads":
+    spec.config.flags.excl UseThreads
   else:
     let
       flag = "--define:$#:$#" % [event.key, event.value]
