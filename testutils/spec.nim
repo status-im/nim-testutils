@@ -53,9 +53,6 @@ proc defaults(spec: var TestSpec) =
 
 proc consumeConfigEvent(spec: var TestSpec; event: CfgEvent) =
   ## parse a specification supplied prior to any sections
-
-  # save the key/value pair in case we need to write out the test file
-  spec.preamble.add (key: event.key, value: event.value)
   case event.key
   of "program":
     spec.program = event.value
