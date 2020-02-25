@@ -94,7 +94,7 @@ proc rewriteTestFile*(spec: TestSpec; outputs: TestOutputs) =
   # add the new test outputs
   for name, expected in outputs.pairs:
     test.setSectionKey(spec.section, name, expected)
-  test.writeConfig(spec.path)
+  writeFile spec.path, ($test).replace("\\n", "\n")
 
 proc parseTestFile*(filePath: string; config: TestConfig): TestSpec =
   ## parse a test input file into a spec
