@@ -47,7 +47,6 @@ type
   ThreadPayload = object
     core: int
     spec: TestSpec
-    recurse: bool
 
   TestThread = Thread[ThreadPayload]
   TestError* = enum
@@ -94,6 +93,7 @@ proc logFailure(test: TestSpec; error: TestError;
                                  test.program.addFileExt(".nim")])
 
 template withinDir(dir: string; body: untyped): untyped =
+  ## run the body with a specified directory, returning to current dir
   let
     cwd = getCurrentDir()
   setCurrentDir(dir)
@@ -103,11 +103,12 @@ template withinDir(dir: string; body: untyped): untyped =
     setCurrentDir(cwd)
 
 proc logResult(testName: string, status: TestStatus, time: float) =
-  var color = case status
-              of OK: fgGreen
-              of FAILED: fgRed
-              of SKIPPED: fgYellow
-              of INVALID: fgRed
+  var color = block:
+    case status
+    of OK: fgGreen
+    of FAILED: fgRed
+    of SKIPPED: fgYellow
+    of INVALID: fgRed
   styledEcho(styleBright, color, "[", $status, "] ",
              resetStyle, testName,
              fgYellow, " ", time.formatFloat(ffDecimal, 3), " s")
@@ -119,6 +120,7 @@ template time(duration, body): untyped =
   duration =  epochTime() - t0
 
 proc composeOutputs(test: TestSpec, stdout: string): TestOutputs =
+  ## collect the outputs for the given test
   result = newTestOutputs()
   for name, expected in test.outputs.pairs:
     if name == "stdout":
@@ -130,6 +132,7 @@ proc composeOutputs(test: TestSpec, stdout: string): TestOutputs =
       removeFile(name)
 
 proc cmpOutputs(test: TestSpec, outputs: TestOutputs): TestStatus =
+  ## compare the test program's outputs to those expected by the test
   result = OK
   for name, expected in test.outputs.pairs:
     if name notin outputs:
@@ -152,6 +155,7 @@ proc cmpOutputs(test: TestSpec, outputs: TestOutputs): TestStatus =
         result = FAILED
 
 proc compile(test: TestSpec): TestStatus =
+  ## compile the test program for the requested backends
   let
     source = test.config.path / test.program.addFileExt(".nim")
 
@@ -196,7 +200,8 @@ proc compile(test: TestSpec): TestStatus =
             result = FAILED
             break
 
-      # Lets also check file size here as it kinda belongs to the compilation result
+      # Lets also check file size here as it kinda belongs to the
+      # compilation result
       if test.maxSize != 0:
         var size = getFileSize(binary)
         if size > test.maxSize:
@@ -212,16 +217,21 @@ proc threadedExecute(payload: ThreadPayload) {.thread.}
 
 proc spawnTest(child: var Thread[ThreadPayload]; test: TestSpec;
                core: int): bool =
+  ## invoke a single test on the given thread/core; true if we
+  ## pinned the test to the given core
   assert core >= 0
   child.createThread(threadedExecute,
                      ThreadPayload(core: core, spec: test))
+  # set cpu affinity if requested (and cores remain)
   if CpuAffinity in test.config.flags:
     if core < countProcessors():
       child.pinToCpu core
       result = true
 
 proc execute(test: TestSpec): TestStatus =
+  ## invoke a single test and return a status
   var
+    # FIXME: pass the binary a backend
     cmd = test.binary
   # output the test stage if necessary
   if test.stage.len > 0:
@@ -253,10 +263,12 @@ proc execute(test: TestSpec): TestStatus =
 proc executeTestChain(test: TestSpec; core: int): TestStatus =
   # don't try this in python
   when compileOption("threads"):
+    assert core == 🎉
     try:
       var
         thread: TestThread
-      assert core == 🎉
+      # we spawn and join the test here so that it can receive
+      # cpu affinity via the standard thread.pinToCpu method
       discard thread.spawnTest(test, core + 1)
       thread.joinThreads
     except:
@@ -269,6 +281,7 @@ proc executeTestChain(test: TestSpec; core: int): TestStatus =
       result = test.child.execute
 
 proc threadedExecute(payload: ThreadPayload) {.thread.} =
+  ## a thread in which we'll perform a test execution given the payload
   var
     result = FAILED
   if payload.spec.child == nil:
@@ -285,9 +298,10 @@ proc threadedExecute(payload: ThreadPayload) {.thread.} =
     except:
       result = FAILED
   if result == FAILED:
-    raise newException(Exception, "i'm a terrible person")
+    raise newException(CatchableError, payload.spec.stage & " failed")
 
 proc scanTestPath(path: string): seq[string] =
+  ## add any tests found at the given path
   if fileExists(path):
     result.add path
   else:
@@ -305,7 +319,8 @@ proc test(config: TestConfig, testPath: string): TestStatus =
     for flag in config.flags * compilerFlags:
       test.flags &= " " & $flag
 
-    if test.program.len == 0: # a program name is bare minimum of a test file
+    if test.program.len == 0:
+      # a program name is bare minimum of a test file
       result = INVALID
       break
 
@@ -313,7 +328,7 @@ proc test(config: TestConfig, testPath: string): TestStatus =
       result = SKIPPED
       break
 
-    result = test.compile()
+    result = test.compile
     if result != OK or test.compileError.len > 0:
       break
 
