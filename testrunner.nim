@@ -343,7 +343,7 @@ proc test(config: TestConfig, testPath: string): TestStatus =
 
   logResult(test.name, result, duration)
 
-proc main() =
+proc main(): int =
   let
     config = processArguments()
     testFiles = scanTestPath(config.path)
@@ -352,22 +352,20 @@ proc main() =
 
   if testFiles.len == 0:
     styledEcho(styleBright, "No test files found")
-    program_result = 1
+    result = 1
   else:
-    for testFile in testFiles:
-      # Here we could do multithread or multiprocess but we will have to
-      # work with different nim caches per test and also the executables
-      # have to be in a unique location as several tests can use the same
-      # source.
-      var result = test(config, testFile)
-      if result == OK:
-        successful += 1
-      elif result == SKIPPED:
-        skipped += 1
+    # test all the things!
+    for testFile in testFiles.items:
+      case config.test(testFile)
+      of OK:
+        successful.inc
+      of SKIPPED:
+        skipped.inc
+      else: discard
 
     styledEcho(styleBright, "Finished run: $#/$# tests successful" %
                             [$successful, $(testFiles.len - skipped)])
-    program_result = testFiles.len - successful - skipped
+    result = testFiles.len - successful - skipped
 
 when isMainModule:
-  main()
+  quit main()
