@@ -1,3 +1,4 @@
+import std/sequtils
 import std/strtabs
 import std/os
 import std/osproc
@@ -5,6 +6,7 @@ import std/strutils
 import std/terminal
 import std/times
 import std/pegs
+import std/algorithm
 
 import testutils/spec
 import testutils/config
@@ -27,7 +29,6 @@ const
   #                  "--hint[Conf]:off --hint[XDeclaredButNotUsed]:off " &
   #                  "--hint[Link]:off --hint[Pattern]:off"
   defaultOptions = "--verbosity:1 --warnings:on "
-  🎉 = -1
 
 type
   TestStatus* = enum
@@ -89,7 +90,7 @@ proc logFailure(test: TestSpec; error: TestError;
                resetStyle, data[0])
 
   styledEcho(fgCyan, styleBright, "command: ", resetStyle,
-             "nim c $#$#$#" % [defaultOptions, test.flags,
+             "nim c $# $# $#" % [defaultOptions, test.flags,
                                  test.program.addFileExt(".nim")])
 
 template withinDir(dir: string; body: untyped): untyped =
@@ -231,7 +232,7 @@ proc spawnTest(child: var Thread[ThreadPayload]; test: TestSpec;
 proc execute(test: TestSpec): TestStatus =
   ## invoke a single test and return a status
   var
-    # FIXME: pass the binary a backend
+    # FIXME: pass a backend
     cmd = test.binary
   # output the test stage if necessary
   if test.stage.len > 0:
@@ -260,25 +261,25 @@ proc execute(test: TestSpec): TestStatus =
           # and we want any dependent testing to proceed as usual.
           result = SKIPPED
 
-proc executeTestChain(test: TestSpec; core: int): TestStatus =
-  # don't try this in python
+proc executeAll(test: TestSpec): TestStatus =
+  ## run a test and any dependent children, yielding a single status
   when compileOption("threads"):
-    assert core == 🎉
     try:
       var
         thread: TestThread
       # we spawn and join the test here so that it can receive
       # cpu affinity via the standard thread.pinToCpu method
-      discard thread.spawnTest(test, core + 1)
+      discard thread.spawnTest(test, 0)
       thread.joinThreads
     except:
       # any thread(?) exception is a failure
       result = FAILED
   else:
     # unthreaded serial test execution
-    result = test.execute
-    if test.child != nil and result in {OK, SKIPPED}:
-      result = test.child.execute
+    result = SKIPPED
+    while test != nil and result in {OK, SKIPPED}:
+      result = test.execute
+      test = test.child
 
 proc threadedExecute(payload: ThreadPayload) {.thread.} =
   ## a thread in which we'll perform a test execution given the payload
@@ -300,6 +301,14 @@ proc threadedExecute(payload: ThreadPayload) {.thread.} =
   if result == FAILED:
     raise newException(CatchableError, payload.spec.stage & " failed")
 
+proc optimizeOrder(tests: seq[TestSpec]): seq[TestSpec] =
+  ## order the tests by how recently each was modified
+  let
+    now = getTime()
+  template whenWritten(path: string): int64 =
+    (now - path.getFileInfo(followSymlink = true).lastWriteTime).inSeconds
+  result = tests.sortedByIt it.path.whenWritten
+
 proc scanTestPath(path: string): seq[string] =
   ## add any tests found at the given path
   if fileExists(path):
@@ -309,16 +318,15 @@ proc scanTestPath(path: string): seq[string] =
       if file.endsWith ".test":
         result.add file
 
-proc test(config: TestConfig, testPath: string): TestStatus =
+proc test(config: TestConfig, test: TestSpec): TestStatus =
   var
-    test: TestSpec
     duration: float
 
+  # FIXME: time compilations first,
+  #        then time executions,
+  #        then remove binaries, or
+  #        just remove caches?
   time duration:
-    test = parseTestFile(testPath, config)
-    for flag in config.flags * compilerFlags:
-      test.flags &= " " & $flag
-
     if test.program.len == 0:
       # a program name is bare minimum of a test file
       result = INVALID
@@ -328,20 +336,25 @@ proc test(config: TestConfig, testPath: string): TestStatus =
       result = SKIPPED
       break
 
+    # compile the test program for all backends
     result = test.compile
     if result != OK or test.compileError.len > 0:
       break
 
-    result = test.executeTestChain(🎉)  # get this party started
-    try:
-      # this may fail in 64-bit AppVeyor images with "The process cannot
-      # access the file because it is being used by another process.
-      # [OSError]"
-      removeFile(test.binary)
-    except CatchableError as e:
-      echo e.msg
+    # perform all tests in the test file
+    result = test.executeAll
+    logResult(test.name, result, duration)
 
-  logResult(test.name, result, duration)
+  try:
+    # this may fail in 64-bit AppVeyor images with "The process cannot
+    # access the file because it is being used by another process.
+    # [OSError]"
+    for binary in test.binaries:
+      removeFile(binary)
+  except CatchableError as e:
+    echo e.msg
+
+  # FIXME: remove caches?
 
 proc main(): int =
   let
@@ -354,9 +367,11 @@ proc main(): int =
     styledEcho(styleBright, "No test files found")
     result = 1
   else:
-    # test all the things!
-    for testFile in testFiles.items:
-      case config.test(testFile)
+    var
+      tests = testFiles.mapIt config.parseTestFile(it)
+    # perform each test in an optimized order
+    for spec in tests.optimizeOrder.items:
+      case config.test(spec)
       of OK:
         successful.inc
       of SKIPPED:

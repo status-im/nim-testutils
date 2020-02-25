@@ -66,6 +66,11 @@ proc binary*(spec: TestSpec): string =
   ## the output binary (execution input) of the test
   result = spec.path.changeFileExt("").addFileExt(ExeExt)
 
+iterator binaries*(spec: TestSpec): string =
+  ## enumerate binary targets for each backend specified by the test
+  for backend in spec.config.backends.items:
+    yield spec.binary(backend)
+
 proc defaults(spec: var TestSpec) =
   ## assert some default values for a given spec
   spec.os = DefaultOses
@@ -118,25 +123,25 @@ proc rewriteTestFile*(spec: TestSpec; outputs: TestOutputs) =
     test.setSectionKey(spec.section, name, expected)
   test.writeConfig(spec.path)
 
-proc parseTestFile*(filePath: string; config: TestConfig): TestSpec =
+proc parseTestFile*(config: TestConfig; filePath: string): TestSpec =
   ## parse a test input file into a spec
   result = new(TestSpec)
   result.defaults
   result.path = absolutePath(filePath)
   result.config = config
-  result.name = splitFile(filePath).name
+  result.name = splitFile(result.path).name
   block:
     var
-      f = newFileStream(filePath, fmRead)
+      f = newFileStream(result.path, fmRead)
     if f == nil:
       # XXX crash?
-      echo "Parsing error: cannot open " & filePath
+      echo "Parsing error: cannot open " & result.path
       break
 
     var
       outputSection = false
       p: CfgParser
-    p.open(f, filePath)
+    p.open(f, result.path)
     try:
       while true:
         var e = next(p)
@@ -170,6 +175,11 @@ proc parseTestFile*(filePath: string; config: TestConfig): TestSpec =
             result.flags &= ("--$#:$#" % [e.key, e.value]).quoteShell & " "
     finally:
       close p
+
+    # we catch this in testrunner and crash there if needed
     if result.program == "":
-      # we catch this in testrunner and crash there if needed
       echo "Parsing error: no program value"
+
+    # assign any compiler flags requested for the test
+    for flag in config.flags * compilerFlags:
+      result.flags &= " " & $flag

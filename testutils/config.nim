@@ -83,7 +83,7 @@ proc processArguments*(): TestConfig =
     case kind
     of cmdArgument:
       if result.path == "":
-        result.path = key
+        result.path = absolutePath(key)
     of cmdLongOption, cmdShortOption:
       case key.toLowerAscii
       of "help", "h":
