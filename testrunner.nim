@@ -202,6 +202,7 @@ proc compile(test: TestSpec): TestStatus =
         if size > test.maxSize:
           logFailure(test, FileSizeTooLarge, $size)
           result = FAILED
+          break
 
       result = OK
     finally:
