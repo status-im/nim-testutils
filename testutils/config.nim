@@ -1,3 +1,4 @@
+import std/sequtils
 import std/hashes
 import std/os
 import std/parseopt
@@ -29,6 +30,12 @@ type
     DangerBuild = "--define:danger"
     CpuAffinity = "--affinity"
 
+  SortBy* {.pure.} = enum
+    Random   = "random"
+    Source   = "age of program source"
+    Test     = "age of test definition"
+    Reverse  = "reverse sort"
+
   TestConfig* = object
     path*: string
     includedTests*: seq[string]
@@ -37,12 +44,14 @@ type
     flags*: set[FlagKind]
     # options
     backendNames*: seq[string]
+    orderBy*: set[SortBy]
 
 const
   defaultFlags = {UseThreads}
   compilerFlags* = {DebugBuild, ReleaseBuild, DangerBuild, UseThreads}
   # --define:testutilsBackends="cpp js"
-  testutilsBackends {.strdefine.} = "c"
+  testutilsBackends* {.strdefine.} = "c"
+  defaultSort = {Source, Reverse}
 
 proc `backends=`*(config: var TestConfig; inputs: seq[string]) =
   config.backendNames = inputs.sorted
@@ -53,6 +62,7 @@ proc `backends=`*(config: var TestConfig; input: string) =
 proc newTestConfig*(options = defaultFlags): TestConfig =
   result.flags = options
   result.backends = testutilsBackends
+  result.orderBy = defaultSort
 
 proc backends*(config: TestConfig): seq[string] =
   result = config.backendNames
@@ -78,6 +88,10 @@ proc processArguments*(): TestConfig =
   var
     opt = initOptParser()
 
+  func toSet[SortBy](list: seq[SortBy]): set[SortBy] =
+    for element in list.items:
+      result.incl element
+
   result = newTestConfig()
   for kind, key, value in opt.getOpt:
     case kind
@@ -88,6 +102,13 @@ proc processArguments*(): TestConfig =
       case key.toLowerAscii
       of "help", "h":
         quit(Usage, QuitSuccess)
+      of "reverse":
+        if Reverse in result.orderBy:
+          result.orderBy.excl Reverse
+        else:
+          result.orderBy.incl Reverse
+      of "sort":
+        result.orderBy = toSet value.split(",").mapIt parseEnum[SortBy](it)
       of "backend", "backends":
         result.backends = value
       of "release", "danger":

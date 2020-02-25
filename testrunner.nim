@@ -1,3 +1,6 @@
+import std/hashes
+import std/random
+import std/tables
 import std/sequtils
 import std/strtabs
 import std/os
@@ -29,6 +32,7 @@ const
   #                  "--hint[Conf]:off --hint[XDeclaredButNotUsed]:off " &
   #                  "--hint[Link]:off --hint[Pattern]:off"
   defaultOptions = "--verbosity:1 --warnings:on "
+  backendOrder = @["c", "cpp", "js"]
 
 type
   TestStatus* = enum
@@ -60,12 +64,14 @@ type
     FileSizeTooLarge
     CompileErrorDiffers
 
+  BackendTests = TableRef[string, seq[TestSpec]]
+
 proc logFailure(test: TestSpec; error: TestError;
                 data: varargs[string] = [""]) =
   case error
   of SourceFileNotFound:
     styledEcho(fgYellow, styleBright, "source file not found: ",
-               resetStyle, test.program.addFileExt(".nim"))
+               resetStyle, test.source)
   of ExeFileNotFound:
     styledEcho(fgYellow, styleBright, "file not found: ",
                resetStyle, test.binary)
@@ -91,7 +97,7 @@ proc logFailure(test: TestSpec; error: TestError;
 
   styledEcho(fgCyan, styleBright, "command: ", resetStyle,
              "nim c $# $# $#" % [defaultOptions, test.flags,
-                                 test.program.addFileExt(".nim")])
+                                 test.source])
 
 template withinDir(dir: string; body: untyped): untyped =
   ## run the body with a specified directory, returning to current dir
@@ -155,17 +161,14 @@ proc cmpOutputs(test: TestSpec, outputs: TestOutputs): TestStatus =
         logFailure(test, OutputsDiffer, name, expected, testOutput)
         result = FAILED
 
-proc compile(test: TestSpec): TestStatus =
+proc compile(test: TestSpec; backend: string): TestStatus =
   ## compile the test program for the requested backends
-  let
-    source = test.config.path / test.program.addFileExt(".nim")
+  block:
+    if not existsFile(test.source):
+      logFailure(test, SourceFileNotFound)
+      result = FAILED
+      break
 
-  if not existsFile(source):
-    logFailure(test, SourceFileNotFound)
-    result = FAILED
-    return
-
-  for backend in test.config.backends.items:
     let
       binary = test.binary(backend)
     var
@@ -175,7 +178,7 @@ proc compile(test: TestSpec): TestStatus =
     cmd &= " --out:" & binary
     cmd &= " " & defaultOptions
     cmd &= " " & test.flags
-    cmd &= " " & source.quoteShell
+    cmd &= " " & test.source.quoteShell
     var
       c = parseCmdLine(cmd)
       p = startProcess(command=c[0], args=c[1.. ^1],
@@ -238,11 +241,11 @@ proc execute(test: TestSpec): TestStatus =
   if test.stage.len > 0:
     echo 20.spaces & test.stage
 
-  if not existsFile(cmd):
+  if not fileExists(cmd):
     result = FAILED
     logFailure(test, ExeFileNotFound)
   else:
-    withinDir parentDir(cmd):
+    withinDir parentDir(test.path):
       cmd = cmd.quoteShell & " " & test.args
       let
         (output, exitCode) = execCmdEx(cmd)
@@ -301,13 +304,24 @@ proc threadedExecute(payload: ThreadPayload) {.thread.} =
   if result == FAILED:
     raise newException(CatchableError, payload.spec.stage & " failed")
 
-proc optimizeOrder(tests: seq[TestSpec]): seq[TestSpec] =
+proc optimizeOrder(tests: seq[TestSpec];
+                   order: set[SortBy]): seq[TestSpec] =
   ## order the tests by how recently each was modified
-  let
-    now = getTime()
-  template whenWritten(path: string): int64 =
-    (now - path.getFileInfo(followSymlink = true).lastWriteTime).inSeconds
-  result = tests.sortedByIt it.path.whenWritten
+  template whenWritten(path: string): Time =
+    path.getFileInfo(followSymlink = true).lastWriteTime
+
+  result = tests
+  for s in SortBy.low .. SortBy.high:
+    if s in order:
+      case s
+      of Test:
+        result = result.sortedByIt it.path.whenWritten
+      of Source:
+        result = result.sortedByIt it.source.whenWritten
+      of Reverse:
+        result.reverse
+      of Random:
+        result.shuffle
 
 proc scanTestPath(path: string): seq[string] =
   ## add any tests found at the given path
@@ -318,50 +332,97 @@ proc scanTestPath(path: string): seq[string] =
       if file.endsWith ".test":
         result.add file
 
-proc test(config: TestConfig, test: TestSpec): TestStatus =
+proc test(test: TestSpec; backend: string): TestStatus =
+  let
+    config = test.config
   var
     duration: float
 
-  # FIXME: time compilations first,
-  #        then time executions,
-  #        then remove binaries, or
-  #        just remove caches?
-  time duration:
-    if test.program.len == 0:
+  try:
+    time duration:
+      # perform all tests in the test file
+      result = test.executeAll
+  finally:
+    logResult(test.name, result, duration)
+
+proc buildBackendTests(config: TestConfig;
+                       tests: seq[TestSpec]): BackendTests =
+  ## build the table mapping backend to test inputs
+  result = newTable[string, seq[TestSpec]](4)
+  for spec in tests.items:
+    for backend in config.backends.items:
+      if backend in result:
+        if spec notin result[backend]:
+          result[backend].add spec
+      else:
+        result[backend] = @[spec]
+
+proc removeCaches(config: TestConfig; backend: string) =
+  ## cleanup nimcache directories between backend runs
+  removeDir config.cache(backend)
+
+# we want to run tests on "native", first.
+proc performTesting(config: TestConfig;
+                    backend: string; tests: seq[TestSpec]): TestStatus =
+  var
+    successful, skipped = 0
+    dedupe: CountTable[Hash]
+  # perform each test in an optimized order
+  for spec in tests.optimizeOrder(config.orderBy).items:
+    if spec.program.len == 0:
       # a program name is bare minimum of a test file
       result = INVALID
       break
 
-    if test.skip or hostOS notin test.os or config.shouldSkip(test.name):
+    if spec.skip or hostOS notin spec.os or config.shouldSkip(spec.name):
       result = SKIPPED
       break
 
-    # compile the test program for all backends
-    result = test.compile
-    if result != OK or test.compileError.len > 0:
-      break
+    let
+      build = spec.binaryHash
+    if build notin dedupe:
+      dedupe.inc build
+      # compile the test program for all backends
+      var
+        duration: float
+      try:
+        time duration:
+          result = compile(spec, backend)
+          if result != OK or spec.compileError.len != 0:
+            break
+      finally:
+        logResult("compiled " & spec.program, result, duration)
 
-    # perform all tests in the test file
-    result = test.executeAll
-    logResult(test.name, result, duration)
+    case spec.test(backend)
+    of OK:
+      successful.inc
+    of SKIPPED:
+      skipped.inc
+    else: discard
 
-  try:
-    # this may fail in 64-bit AppVeyor images with "The process cannot
-    # access the file because it is being used by another process.
-    # [OSError]"
-    for binary in test.binaries:
-      removeFile(binary)
-  except CatchableError as e:
-    echo e.msg
+  styledEcho(styleBright, "Finished run for $#: $#/$# tests successful" %
+                          [backend, $successful,
+                           $(tests.len - skipped)])
 
-  # FIXME: remove caches?
+  for spec in tests.items:
+    try:
+      # this may fail in 64-bit AppVeyor images with "The process cannot
+      # access the file because it is being used by another process.
+      # [OSError]"
+      let
+        fn = spec.binary(backend)
+      if fileExists(fn):
+        removeFile(fn)
+    except CatchableError as e:
+      echo e.msg
+
+  if 0 == tests.len - successful - skipped:
+    config.removeCaches(backend)
 
 proc main(): int =
   let
     config = processArguments()
     testFiles = scanTestPath(config.path)
-  var
-    successful, skipped = 0
 
   if testFiles.len == 0:
     styledEcho(styleBright, "No test files found")
@@ -369,18 +430,24 @@ proc main(): int =
   else:
     var
       tests = testFiles.mapIt config.parseTestFile(it)
-    # perform each test in an optimized order
-    for spec in tests.optimizeOrder.items:
-      case config.test(spec)
-      of OK:
-        successful.inc
-      of SKIPPED:
-        skipped.inc
-      else: discard
+      backends = config.buildBackendTests(tests)
 
-    styledEcho(styleBright, "Finished run: $#/$# tests successful" %
-                            [$successful, $(testFiles.len - skipped)])
-    result = testFiles.len - successful - skipped
+    # c > cpp > js
+    for backend in backendOrder:
+      # if we actually need to do anything on the given backend
+      if backend notin backends:
+        continue
+      let
+        tests = backends[backend]
+      try:
+        if OK != config.performTesting(backend, tests):
+          break
+      finally:
+        backends.del(backend)
+
+    for backend, tests in backends.pairs:
+      if OK != config.performTesting(backend, tests):
+        break
 
 when isMainModule:
   quit main()

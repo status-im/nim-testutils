@@ -7,9 +7,6 @@ import std/strtabs
 
 import testutils/config
 
-const
-  DefaultOses = @["linux", "macosx", "windows"]
-
 type
   TestOutputs* = StringTableRef
   TestSpec* = ref object
@@ -32,11 +29,22 @@ type
     os*: seq[string]
     child*: TestSpec
 
+const
+  DefaultOses = @["linux", "macosx", "windows"]
+
 proc hash*(spec: TestSpec): Hash =
   var h: Hash = 0
   h = h !& spec.config.hash
   h = h !& spec.flags.hash
   h = h !& spec.os.hash
+  result = !$h
+
+proc binaryHash*(spec: TestSpec): Hash =
+  ## notably does not hash the backend
+  var h: Hash = 0
+  h = h !& spec.os.hash
+  h = h !& hash(spec.config.flags * compilerFlags)
+  h = h !& spec.program.hash
   result = !$h
 
 proc newTestOutputs*(): StringTableRef =
@@ -58,13 +66,18 @@ func stage*(spec: TestSpec): string =
     names = spec.section.split("Output")
   result = names[^1].replace("_", " ").strip
 
+proc source*(spec: TestSpec): string =
+  result = absolutePath(spec.config.path / spec.program.addFileExt(".nim"))
+
 proc binary*(spec: TestSpec; backend: string): string =
   ## some day this will make more sense
-  result = spec.path.changeFileExt("").addFileExt(ExeExt)
+  result = absolutePath(spec.source.changeFileExt("").addFileExt(ExeExt))
+  if dirExists(result):
+    result = result.addFileExt("out")
 
-proc binary*(spec: TestSpec): string =
+proc binary*(spec: TestSpec): string {.deprecated.} =
   ## the output binary (execution input) of the test
-  result = spec.path.changeFileExt("").addFileExt(ExeExt)
+  result = spec.binary("c")
 
 iterator binaries*(spec: TestSpec): string =
   ## enumerate binary targets for each backend specified by the test
