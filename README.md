@@ -119,6 +119,9 @@ args = "--first"
 args = "--second"
 ```
 
+The failure of any test will, when possible, short-circuit all other tests
+defined in the same file.
+
 ### CPU Affinity
 
 Specify `affinity` to clamp the first _N_ concurrent test threads to the first
@@ -132,6 +135,16 @@ args = "--first"
 
 [Output_2nd_core]
 args = "--second"
+```
+
+### Testing Alternate Backends
+
+By default, `testrunner` builds tests using Nim's C backend. Specify `backends`
+to build and run run tests with the backends of your choice.
+
+```ini
+program = "exceptional"
+backends = "c cpp"
 ```
 
 ### More Examples
