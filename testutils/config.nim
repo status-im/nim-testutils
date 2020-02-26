@@ -79,6 +79,10 @@ proc hash*(config: TestConfig): Hash =
   h = h !& hash(UseThreads notin config.flags)
   result = !$h
 
+proc compilationFlags*(config: TestConfig): string =
+  for flag in compilerFlags * config.flags:
+    result &= " " & $flag
+
 proc cache*(config: TestConfig; backend: string): string =
   ## return the path to the nimcache for the given backend and
   ## compile-time flags

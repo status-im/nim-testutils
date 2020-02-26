@@ -95,9 +95,11 @@ proc logFailure(test: TestSpec; error: TestError;
     styledEcho(fgYellow, styleBright, "compile error is different:\p",
                resetStyle, data[0])
 
-  styledEcho(fgCyan, styleBright, "command: ", resetStyle,
-             "nim c $# $# $#" % [defaultOptions, test.flags,
-                                 test.source])
+  styledEcho(fgCyan, styleBright, "compiler: ", resetStyle,
+             "$# $# $# $#" % [defaultOptions,
+                              test.flags,
+                              test.config.compilationFlags,
+                              test.source])
 
 template withinDir(dir: string; body: untyped): untyped =
   ## run the body with a specified directory, returning to current dir
@@ -178,6 +180,7 @@ proc compile(test: TestSpec; backend: string): TestStatus =
     cmd &= " --out:" & binary
     cmd &= " " & defaultOptions
     cmd &= " " & test.flags
+    cmd &= " " & test.config.compilationFlags
     cmd &= " " & test.source.quoteShell
     var
       c = parseCmdLine(cmd)
@@ -351,6 +354,7 @@ proc buildBackendTests(config: TestConfig;
   result = newTable[string, seq[TestSpec]](4)
   for spec in tests.items:
     for backend in config.backends.items:
+      assert backend != ""
       if backend in result:
         if spec notin result[backend]:
           result[backend].add spec
@@ -367,6 +371,9 @@ proc performTesting(config: TestConfig;
   var
     successful, skipped = 0
     dedupe: CountTable[Hash]
+
+  assert backend != ""
+
   # perform each test in an optimized order
   for spec in tests.optimizeOrder(config.orderBy).items:
     if spec.program.len == 0:
@@ -379,7 +386,7 @@ proc performTesting(config: TestConfig;
       break
 
     let
-      build = spec.binaryHash
+      build = spec.binaryHash(backend)
     if build notin dedupe:
       dedupe.inc build
       # compile the test program for all backends
@@ -391,14 +398,16 @@ proc performTesting(config: TestConfig;
           if result != OK or spec.compileError.len != 0:
             break
       finally:
-        logResult("compiled " & spec.program, result, duration)
+        logResult("compiled " & spec.program & " for " & spec.name,
+                  result, duration)
 
-    case spec.test(backend)
-    of OK:
-      successful.inc
-    of SKIPPED:
-      skipped.inc
-    else: discard
+    if result == OK:
+      case spec.test(backend)
+      of OK:
+        successful.inc
+      of SKIPPED:
+        skipped.inc
+      else: discard
 
   styledEcho(styleBright, "Finished run for $#: $#/$# tests successful" %
                           [backend, $successful,
@@ -434,6 +443,7 @@ proc main(): int =
 
     # c > cpp > js
     for backend in backendOrder:
+      assert backend != ""
       # if we actually need to do anything on the given backend
       if backend notin backends:
         continue
@@ -446,6 +456,7 @@ proc main(): int =
         backends.del(backend)
 
     for backend, tests in backends.pairs:
+      assert backend != ""
       if OK != config.performTesting(backend, tests):
         break
 

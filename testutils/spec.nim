@@ -39,11 +39,13 @@ proc hash*(spec: TestSpec): Hash =
   h = h !& spec.os.hash
   result = !$h
 
-proc binaryHash*(spec: TestSpec): Hash =
-  ## notably does not hash the backend
+proc binaryHash*(spec: TestSpec; backend: string): Hash =
+  ## hash the backend, any compilation flags, and defines, etc.
   var h: Hash = 0
+  h = h !& backend.hash
   h = h !& spec.os.hash
   h = h !& hash(spec.config.flags * compilerFlags)
+  h = h !& hash(spec.flags)
   h = h !& spec.program.hash
   result = !$h
 
@@ -114,6 +116,8 @@ proc consumeConfigEvent(spec: var TestSpec; event: CfgEvent) =
     spec.config.flags.incl UseThreads
   of "nothreads":
     spec.config.flags.excl UseThreads
+  of "release", "danger", "debug":
+    spec.config.flags.incl parseEnum[FlagKind]("--define:" & event.key)
   else:
     let
       flag = "--define:$#:$#" % [event.key, event.value]
@@ -185,6 +189,7 @@ proc parseTestFile*(config: TestConfig; filePath: string): TestSpec =
           of "skip":
             result.skip = true
           else:
+            # this for for, eg. --opt:size
             result.flags &= ("--$#:$#" % [e.key, e.value]).quoteShell & " "
     finally:
       close p
@@ -192,7 +197,3 @@ proc parseTestFile*(config: TestConfig; filePath: string): TestSpec =
     # we catch this in testrunner and crash there if needed
     if result.program == "":
       echo "Parsing error: no program value"
-
-    # assign any compiler flags requested for the test
-    for flag in config.flags * compilerFlags:
-      result.flags &= " " & $flag
