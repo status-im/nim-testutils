@@ -9,15 +9,19 @@ const
   Usage = """
 
   Usage:
-  testrunner [options] path
+    testrunner [options] path
   Run the test(s) specified at path. Will search recursively for test files
   provided path is a directory.
-Options:
-  --targets:"c c++ js objc" [Not implemented] Run tests for specified targets
-  --include:"test1 test2"   Run only listed tests (space/comma seperated)
-  --exclude:"test1 test2"   Skip listed tests (space/comma seperated)
-  --update                  Rewrite failed tests with new output
-  --help                    Display this help and exit
+
+  Options:
+  --backends:"c cpp js objc"  Run tests for specified targets
+  --include:"test1 test2"     Run only listed tests (space/comma separated)
+  --exclude:"test1 test2"     Skip listed tests (space/comma separated)
+  --update                    Rewrite failed tests with new output
+  --sort:"source,test"        Sort the tests by program and/or test mtime
+  --reverse                   Reverse the order of tests
+  --random                    Shuffle the order of tests
+  --help                      Display this help and exit
 
   """.unindent.strip
 
@@ -32,9 +36,9 @@ type
 
   SortBy* {.pure.} = enum
     Random   = "random"
-    Source   = "age of program source"
-    Test     = "age of test definition"
-    Reverse  = "reverse sort"
+    Source   = "source"
+    Test     = "test"
+    Reverse  = "reverse"
 
   TestConfig* = object
     path*: string
@@ -102,22 +106,22 @@ proc processArguments*(): TestConfig =
       case key.toLowerAscii
       of "help", "h":
         quit(Usage, QuitSuccess)
-      of "reverse":
-        if Reverse in result.orderBy:
-          result.orderBy.excl Reverse
+      of "reverse", "random":
+        let
+          flag = parseEnum[SortBy](value)
+        if flag in result.orderBy:
+          result.orderBy.excl flag
         else:
-          result.orderBy.incl Reverse
+          result.orderBy.incl flag
       of "sort":
         result.orderBy = toSet value.split(",").mapIt parseEnum[SortBy](it)
-      of "backend", "backends":
+      of "backend", "backends", "targets", "t":
         result.backends = value
       of "release", "danger":
         result.flags.incl ReleaseBuild
         result.flags.incl DangerBuild
       of "nothreads":
         result.flags.excl UseThreads
-      of "targets", "t":
-        discard # not implemented
       of "update":
         result.flags.incl UpdateOutputs
       of "include":

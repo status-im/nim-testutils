@@ -9,11 +9,14 @@ testrunner [options] path
 Run the test(s) specified at path. Will search recursively for test files
 provided path is a directory.
 Options:
---targets:"c c++ js objc" [Not implemented] Run tests for specified targets
---include:"test1 test2"   Run only listed tests (space/comma seperated)
---exclude:"test1 test2"   Skip listed tests (space/comma seperated)
---update                  Rewrite failed tests with new output
---help                    Display this help and exit
+--backends:"c cpp js objc"  Run tests for specified targets
+--include:"test1 test2"     Run only listed tests (space/comma seperated)
+--exclude:"test1 test2"     Skip listed tests (space/comma seperated)
+--update                    Rewrite failed tests with new output
+--sort:"source,test"        Sort the tests by program and/or test mtime
+--reverse                   Reverse the order of tests
+--random                    Shuffle the order of tests
+--help                      Display this help and exit
 ```
 
 The runner will look recursively for all `*.test` files at given path.
@@ -105,9 +108,9 @@ the new outputs of the test.
 
 ### Concurrent Test Execution
 
-Unless you pass `--nothreads` to `testrunner`, it will run multiple test
-invocations defined in each test file simultaneously. You can also specify
-`nothreads` or `threads` in the _preamble_.
+When built with threads, `testrunner` will run multiple test invocations
+defined in each test file simultaneously. You can specify `nothreads` in the
+_preamble_ to disable this behavior.
 
 ```ini
 nothreads = true
@@ -139,13 +142,25 @@ args = "--second"
 
 ### Testing Alternate Backends
 
-By default, `testrunner` builds tests using Nim's C backend. Specify `backends`
-to build and run run tests with the backends of your choice.
+By default, `testrunner` builds tests using Nim's C backend. Specify the
+`--backends` command-line option to build and run run tests with the backends
+of your choice.
 
-```ini
-program = "exceptional"
-backends = "c cpp"
+```sh
+$ testrunner --backends="c cpp" tests
 ```
+
+### Setting the Order of Tests
+
+By default, `testrunner` will order test compilation and execution according
+to the modification time of the test program source.  You can choose to sort
+by test program mtime, too.
+
+```sh
+$ testrunner --sort:test suite/
+```
+
+You can `--reverse` or `--random`ize the order of tests, too.
 
 ### More Examples
 
