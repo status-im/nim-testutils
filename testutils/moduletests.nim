@@ -2,7 +2,9 @@
 
 template tests*(body: untyped) =
   template payload =
-    import unittest
+    when not declared(unittest):
+      import unittest
+
     body
 
   when defined(testutils_test_build):
