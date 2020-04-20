@@ -73,7 +73,7 @@ proc logFailure(test: TestSpec; error: TestError;
     styledEcho(fgYellow, styleBright, "source file not found: ",
                resetStyle, test.source)
   of ExeFileNotFound:
-    styledEcho(fgYellow, styleBright, "file not found: ",
+    styledEcho(fgYellow, styleBright, "executable file not found: ",
                resetStyle, test.binary)
   of OutputFileNotFound:
     styledEcho(fgYellow, styleBright, "file not found: ",

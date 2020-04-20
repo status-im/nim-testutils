@@ -14,7 +14,7 @@ type
     args*: string
     config*: TestConfig
     path*: string
-    name*: string
+    pathComponents*: tuple[dir, name, ext: string]
     skip*: bool
     program*: string
     flags*: string
@@ -49,6 +49,9 @@ proc binaryHash*(spec: TestSpec; backend: string): Hash =
   h = h !& spec.program.hash
   result = !$h
 
+template name*(spec: TestSpec): string =
+  spec.pathComponents.name
+
 proc newTestOutputs*(): StringTableRef =
   result = newStringTable(mode = modeStyleInsensitive)
 
@@ -69,11 +72,11 @@ func stage*(spec: TestSpec): string =
   result = names[^1].replace("_", " ").strip
 
 proc source*(spec: TestSpec): string =
-  result = absolutePath(spec.config.path / spec.program.addFileExt(".nim"))
+  result = absolutePath(spec.pathComponents.dir / spec.program.addFileExt(".nim"))
 
 proc binary*(spec: TestSpec; backend: string): string =
   ## some day this will make more sense
-  result = absolutePath(spec.source.changeFileExt("").addFileExt(ExeExt))
+  result = (spec.pathComponents.dir / spec.pathComponents.name).addFileExt(ExeExt)
   if dirExists(result):
     result = result.addFileExt("out")
 
@@ -145,8 +148,8 @@ proc parseTestFile*(config: TestConfig; filePath: string): TestSpec =
   result = new(TestSpec)
   result.defaults
   result.path = absolutePath(filePath)
+  result.pathComponents = splitFile result.path
   result.config = config
-  result.name = splitFile(result.path).name
   block:
     var
       f = newFileStream(result.path, fmRead)
