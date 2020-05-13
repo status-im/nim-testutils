@@ -122,6 +122,16 @@ proc logResult(testName: string, status: TestStatus, time: float) =
              resetStyle, testName,
              fgYellow, " ", time.formatFloat(ffDecimal, 3), " s")
 
+proc logResult(testName: string, status: TestStatus) =
+  var color = block:
+    case status
+    of OK: fgGreen
+    of FAILED: fgRed
+    of SKIPPED: fgYellow
+    of INVALID: fgRed
+  styledEcho(styleBright, color, "[", $status, "] ",
+             resetStyle, testName)
+
 template time(duration, body): untyped =
   let t0 = epochTime()
   block:
@@ -369,49 +379,52 @@ proc removeCaches(config: TestConfig; backend: string) =
 proc performTesting(config: TestConfig;
                     backend: string; tests: seq[TestSpec]): TestStatus =
   var
-    successful, skipped = 0
+    successful, skipped, invalid, failed = 0
     dedupe: CountTable[Hash]
 
   assert backend != ""
 
   # perform each test in an optimized order
   for spec in tests.optimizeOrder(config.orderBy).items:
-    if spec.program.len == 0:
-      # a program name is bare minimum of a test file
-      result = INVALID
-      break
 
-    if spec.skip or hostOS notin spec.os or config.shouldSkip(spec.name):
-      result = SKIPPED
-      break
+    block escapeBlock:
+      if spec.program.len == 0:
+        # a program name is bare minimum of a test file
+        result = INVALID
+        invalid.inc
+        logResult(spec.program & " for " & spec.name, result)
+        break escapeBlock
 
-    let
-      build = spec.binaryHash(backend)
-    if build notin dedupe:
-      dedupe.inc build
-      # compile the test program for all backends
-      var
-        duration: float
-      try:
-        time duration:
-          result = compile(spec, backend)
-          if result != OK or spec.compileError.len != 0:
-            break
-      finally:
-        logResult("compiled " & spec.program & " for " & spec.name,
-                  result, duration)
+      if spec.skip or hostOS notin spec.os or config.shouldSkip(spec.name):
+        result = SKIPPED
+        skipped.inc
+        logResult(spec.program & " for " & spec.name, result)
+        break escapeBlock
+
+      let
+        build = spec.binaryHash(backend)
+      if build notin dedupe:
+        dedupe.inc build
+        # compile the test program for all backends
+        var
+          duration: float
+        try:
+          time duration:
+            result = compile(spec, backend)
+            if result != OK or spec.compileError.len != 0:
+              failed.inc
+              break escapeBlock
+        finally:
+          logResult("compiled " & spec.program & " for " & spec.name,
+                    result, duration)
 
     if result == OK:
-      case spec.test(backend)
-      of OK:
-        successful.inc
-      of SKIPPED:
-        skipped.inc
-      else: discard
+      successful.inc
 
-  styledEcho(styleBright, "Finished run for $#: $#/$# tests successful" %
-                          [backend, $successful,
-                           $(tests.len - skipped)])
+  let nonSuccesful = skipped + invalid + failed
+  styledEcho(styleBright, "Finished run for $#: $#/$# OK, $# SKIPPED, $# FAILED, $# INVALID" %
+                          [backend, $successful, $(tests.len),
+                          $skipped, $failed, $invalid])
 
   for spec in tests.items:
     try:
@@ -425,7 +438,7 @@ proc performTesting(config: TestConfig;
     except CatchableError as e:
       echo e.msg
 
-  if 0 == tests.len - successful - skipped:
+  if 0 == tests.len - successful - nonSuccesful:
     config.removeCaches(backend)
 
 proc main(): int =

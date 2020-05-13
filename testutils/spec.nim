@@ -47,6 +47,7 @@ proc binaryHash*(spec: TestSpec; backend: string): Hash =
   h = h !& hash(spec.config.flags * compilerFlags)
   h = h !& hash(spec.flags)
   h = h !& spec.program.hash
+  h = h !& spec.pathComponents.name.hash
   result = !$h
 
 template name*(spec: TestSpec): string =
