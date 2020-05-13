@@ -1,30 +1,51 @@
-import streams, posix, strutils, chronicles, macros, stew/ranges/ptr_arith
+import streams, strutils, chronicles, macros, stew/ranges/ptr_arith
 
-template fuzz(body) =
+when not defined(windows):
+  import posix
+else:
+  import os
+
+# if user forget to import chronicles
+# they still can compile without mysterious
+# error such as "undeclared identifier: 'activeChroniclesStream'"
+export chronicles
+
+proc suicide() =
   # For code we want to fuzz, SIGSEGV is needed on unwanted exceptions.
   # However, this is only needed when fuzzing with afl.
+  when not defined(windows):
+    discard kill(getpid(), SIGSEGV)
+  else:
+    discard
+
+template fuzz(body) =
   when defined(afl):
     try:
       body
     except Exception as e:
       error "Fuzzer input created exception", exception=e.name, trace=e.repr,
         msg=e.msg
-      discard kill(getpid(), SIGSEGV)
+      suicide()
   else:
     body
 
-proc readStdin(): seq[byte] =
-  # Read input from stdin (fastest for AFL)
-  let s = newFileStream(stdin)
-  if s.isNil:
-    error "Error opening stdin"
-    discard kill(getpid(), SIGSEGV)
-  # We use binary files as with hex we can get lots of "not hex" failures
-  var input = s.readAll()
-  s.close()
-  # Remove newline if it is there
-  input.removeSuffix
-  result = cast[seq[byte]](input)
+when defined(afl):
+  proc readStdin(): seq[byte] =
+    when defined(windows):
+      debugEcho "ASS: ", paramStr(1)
+      let s = newFileStream(paramStr(1))
+    else:
+      # Read input from stdin (fastest for AFL)
+      let s = newFileStream(stdin)
+    if s.isNil:
+      error "Error opening stdin"
+      suicide()
+    # We use binary files as with hex we can get lots of "not hex" failures
+    var input = s.readAll()
+    s.close()
+    # Remove newline if it is there
+    input.removeSuffix
+    result = cast[seq[byte]](input)
 
 proc NimMain() {.importc: "NimMain".}
 
@@ -66,9 +87,16 @@ template test*(body: untyped): untyped =
   mixin initImpl
   initImpl()
   when not defined(libFuzzer):
-    var payload {.inject.} = readStdin()
+    when not defined(windows):
+      var payload {.inject.} = readStdin()
 
-    fuzz: `body`
+      fuzz: `body`
+    else:
+      proc fuzzerCall() {.exportc: "AFLmain", dynlib, cdecl.} =
+        var payload {.inject.} = readStdin()
+        fuzz: `body`
+
+      fuzzerCall()
   else:
     proc fuzzerCall(data: ptr byte, len: csize):
         cint {.exportc: "LLVMFuzzerTestOneInput".} =
