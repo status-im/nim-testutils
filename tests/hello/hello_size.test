@@ -2,3 +2,4 @@ program = "../hello"
 max_size = 60000
 release
 --opt:size
+os = "linux,macosx"
