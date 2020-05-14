@@ -24,7 +24,9 @@ proc execTest(test: string) =
     execCmd "nim c   -d:danger  -r " & test
     execCmd "nim cpp            -r " & test
     execCmd "nim cpp -d:danger  -r " & test
-    when NimMajor >= 1 and NimMinor >= 1:
+    when NimMajor >= 1 and NimMinor >= 1 and not defined(macosx):
+      # we disable gc:arc test here because Nim cgen
+      # generate something not acceptable for clang
       execCmd "nim c   --gc:arc --exceptions:goto -r " & test
       execCmd "nim cpp --gc:arc --exceptions:goto -r " & test
   else:
