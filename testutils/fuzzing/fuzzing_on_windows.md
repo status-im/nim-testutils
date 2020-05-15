@@ -60,7 +60,7 @@ If you already prepare your test case, the instruction to build the binary is ex
 nim c -d:libFuzzer -d:release -d:chronicles_log_level=fatal --noMain --cc=clang --passC="-fsanitize=fuzzer" --passL="-fsanitize=fuzzer" testcase
 ```
 
-Now go back to [Starting the Fuzzer using libFuzzer](readme.md#Starting the Fuzzer)
+Now go back to [Starting the Fuzzer using libFuzzer](readme.md#Starting-the-Fuzzer)
 
 
 ### Compiling with winafl
@@ -123,9 +123,26 @@ you env `PATH` instead of polluting it system wide.
 * PowerShell: ```$env:path = ($pwd).path + "\bin\Release;" + $env:path```
 * CMD Command Prompt: ```set PATH=%CD%\bin\Release;%PATH%```
 
+#### Compiling testcase
+
 Compiling the testcase is simpler than Linux version, you don't need to use afl-gcc or afl-clang,
 you can use clang, vcc, or mingw-gcc as you like.
 
 ```Nim
-nim c -d:afl -d:release -d:chronicles_log_level=fatal -d:noSignalHandler testcase
+nim c -d:afl -d:noSignalHandler -d:release -d:chronicles_log_level=fatal testcase
 ```
+
+#### Starting the Fuzzer
+
+Now run the command from Command Prompt terminal, the `@@` will not work with PowerShell.
+Winafl needs the input data to be read from a file, not from stdin, that's why the presence of `@@`.
+
+```sh
+afl-fuzz.exe -i inDir -o outDir -P -t 20000 -- -coverage_module testcase.exe -fuzz_iterations 20 -target_module testcase.exe -target_method AFLmain -nargs 2 -- testcase.exe @@
+```
+
+* `inDir` is a directory containing a small but valid input file that makes sense to the program.
+* `outDir` will be the location of generated testcase corpus.
+* replace both `testcase.exe` with your executable binary.
+* `-P` is Intel PT selector
+* `-t` timeout in msec
