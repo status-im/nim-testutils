@@ -48,8 +48,10 @@ proc aflCompile*(target: string, c: Compiler) =
   let compileCmd = &"nim c {defaultFlags} {aflOptions} {target.quoteShell()}"
   exec compileCmd
 
-proc aflExec*(target: string, inputDir: string, resultsDir: string,
-    cleanStart = false) =
+proc aflExec*(target: string,
+              inputDir: string,
+              resultsDir: string,
+              cleanStart = false) =
   let exe = target.addFileExt(ExeExt)
   if not dirExists(inputDir):
     # create a input dir with one 0 file for afl
@@ -78,17 +80,24 @@ proc libFuzzerExec*(target: string, corpusDir: string) =
 
   exec &"{exe.quoteShell()} {corpusDir.quoteShell()}"
 
-proc runFuzzer*(targetPath: string, fuzzer: Fuzzer) =
+proc runFuzzer*(targetPath: string, fuzzer: Fuzzer, corpusDir: string) =
   let (path, target, ext) = splitFile(targetPath)
 
   case fuzzer
   of afl:
-    aflCompile(targetPath, gcc)
-    aflExec(path / target, path / "input", path / "results")
-
-  of libFuzzer:
-    libFuzzerCompile(targetPath)
     # Note: Lets not mix afl input with libFuzzer corpus default. This can have
     # consequences on speed for afl. Better to look into merging afl results &
     # libFuzzer corpus.
-    libFuzzerExec(path / target, path / "corpus")
+    var corpusDir = if corpusDir.len > 0: corpusDir
+                    else: path / "input"
+
+    aflCompile(targetPath, clang)
+    aflExec(path / target, corpusDir, path / "results")
+
+  of libFuzzer:
+    var corpusDir = if corpusDir.len > 0: corpusDir
+                    else: path / "corpus"
+
+    libFuzzerCompile(targetPath)
+    libFuzzerExec(path / target, corpusDir)
+
