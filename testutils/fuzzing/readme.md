@@ -38,14 +38,17 @@ test:
 
 ## Supported Fuzzers
 The two templates can prepare the code for both
-[afl](http://lcamtuf.coredump.cx/afl/) and
+[afl](http://lcamtuf.coredump.cx/afl/),
+[afl++](https://github.com/AFLplusplus/AFLplusplus) and
 [libFuzzer](http://llvm.org/docs/LibFuzzer.html).
 
 You will need to install first the fuzzer you want to use.
+
 ### Install afl
+
 ```sh
 # Ubuntu / Debian
-sudo apt-get install afl
+sudo apt-get install afl++
 
 # Fedora
 dnf install american-fuzzy-lop
