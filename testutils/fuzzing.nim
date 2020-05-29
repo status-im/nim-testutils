@@ -1,9 +1,7 @@
-import streams, strutils, chronicles, macros, stew/ranges/ptr_arith
+import os, streams, strutils, chronicles, macros, stew/ranges/ptr_arith
 
 when not defined(windows):
   import posix
-else:
-  import os
 
 # if user forget to import chronicles
 # they still can compile without mysterious
@@ -19,26 +17,22 @@ proc suicide() =
     discard
 
 template fuzz(body) =
-  when defined(afl):
+  when defined(libFuzzer):
+    body
+  else:
     try:
       body
     except Exception as e:
       error "Fuzzer input created exception", exception=e.name, trace=e.repr,
         msg=e.msg
       suicide()
-  else:
-    body
 
-when defined(afl):
+when not defined(libFuzzer):
   proc readStdin(): seq[byte] =
-    when defined(windows):
-      debugEcho "ASS: ", paramStr(1)
-      let s = newFileStream(paramStr(1))
-    else:
-      # Read input from stdin (fastest for AFL)
-      let s = newFileStream(stdin)
+    let s = if paramCount() > 0: newFileStream(paramStr(1))
+            else: newFileStream(stdin)
     if s.isNil:
-      error "Error opening stdin"
+      error "Error opening input stream"
       suicide()
     # We use binary files as with hex we can get lots of "not hex" failures
     var input = s.readAll()
@@ -51,13 +45,13 @@ proc NimMain() {.importc: "NimMain".}
 
 # The default init, gets redefined when init template is used.
 template initImpl(): untyped =
-  when not defined(libFuzzer):
-    discard
-  else:
+  when defined(libFuzzer):
     proc fuzzerInit(): cint {.exportc: "LLVMFuzzerInitialize".} =
       NimMain()
 
       return 0
+  else:
+    discard
 
 template init*(body: untyped) =
   ## Init block to do any initialisation for the fuzzing test.
@@ -68,9 +62,7 @@ template init*(body: untyped) =
   ## For libFuzzer this will only be run once. So only put data which is
   ## stateless or make sure everything gets properply reset for each new run in
   ## the test block.
-  when not defined(libFuzzer):
-    template initImpl(): untyped = fuzz: `body`
-  else:
+  when defined(libFuzzer):
     template initImpl() =
       proc fuzzerInit(): cint {.exportc: "LLVMFuzzerInitialize".} =
         NimMain()
@@ -78,6 +70,8 @@ template init*(body: untyped) =
         `body`
 
         return 0
+  else:
+    template initImpl(): untyped = fuzz: `body`
 
 template test*(body: untyped): untyped =
   ## Test block to do the actual test that will be fuzzed in a loop.
@@ -86,7 +80,14 @@ template test*(body: untyped): untyped =
   ## contains the payload provided by the fuzzer.
   mixin initImpl
   initImpl()
-  when not defined(libFuzzer):
+  when defined(libFuzzer):
+    proc fuzzerCall(data: ptr byte, len: csize):
+        cint {.exportc: "LLVMFuzzerTestOneInput".} =
+      template payload(): auto =
+        makeOpenArray(data, len)
+
+      `body`
+  else:
     when not defined(windows):
       var payload {.inject.} = readStdin()
 
@@ -97,15 +98,8 @@ template test*(body: untyped): untyped =
         fuzz: `body`
 
       fuzzerCall()
-  else:
-    proc fuzzerCall(data: ptr byte, len: csize):
-        cint {.exportc: "LLVMFuzzerTestOneInput".} =
-      template payload(): auto =
-        makeOpenArray(data, len)
 
-      `body`
-
-when defined(clangfast):
+when defined(clangfast) and not defined(libFuzzer):
   ## Can be used for deferred instrumentation.
   ## Should be placed on a suitable location in the code where the delayed
   ## cloning can take place (e.g. NOT after creation of threads)
