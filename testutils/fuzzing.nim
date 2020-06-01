@@ -53,7 +53,7 @@ template initImpl(): untyped =
   else:
     discard
 
-template init*(body: untyped) =
+template init*(body: untyped) {.dirty.} =
   ## Init block to do any initialisation for the fuzzing test.
   ##
   ## For AFL this is currently only cosmetic and will be run each time, before
@@ -63,15 +63,17 @@ template init*(body: untyped) =
   ## stateless or make sure everything gets properply reset for each new run in
   ## the test block.
   when defined(libFuzzer):
-    template initImpl() =
+    template initImpl() {.dirty.} =
       proc fuzzerInit(): cint {.exportc: "LLVMFuzzerInitialize".} =
         NimMain()
 
-        `body`
+        body
 
         return 0
   else:
-    template initImpl(): untyped = fuzz: `body`
+    template initImpl(): untyped {.dirty.} =
+      bind fuzz
+      fuzz: body
 
 template test*(body: untyped): untyped =
   ## Test block to do the actual test that will be fuzzed in a loop.
@@ -86,16 +88,16 @@ template test*(body: untyped): untyped =
       template payload(): auto =
         makeOpenArray(data, len)
 
-      `body`
+      body
   else:
     when not defined(windows):
       var payload {.inject.} = readStdin()
 
-      fuzz: `body`
+      fuzz: body
     else:
       proc fuzzerCall() {.exportc: "AFLmain", dynlib, cdecl.} =
         var payload {.inject.} = readStdin()
-        fuzz: `body`
+        fuzz: body
 
       fuzzerCall()
 
