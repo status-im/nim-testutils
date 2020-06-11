@@ -1,5 +1,6 @@
 type
-  fuzzingEngine* = enum
+  FuzzingEngine* = enum
     libFuzzer
+    honggfuzz
     afl
 
