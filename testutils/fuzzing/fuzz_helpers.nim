@@ -14,38 +14,51 @@ import strformat, ospaths
 # - currently not cross platform
 # - ...
 
+import
+  ../fuzzing_engines
+
+export
+  fuzzing_engines
+
 const
   aflGcc = "--cc=gcc " &
            "--gcc.exe=afl-gcc " &
            "--gcc.linkerexe=afl-gcc"
+
   aflClang = "--cc=clang " &
              "--clang.exe=afl-clang " &
              "--clang.linkerexe=afl-clang"
+
   aflClangFast = "--cc=clang " &
                  "--clang.exe=afl-clang-fast " &
                  "--clang.linkerexe=afl-clang-fast " &
                  "-d:clangfast"
+
   libFuzzerClang = "--cc=clang " &
                    "--passC='-fsanitize=fuzzer,address' " &
                    "--passL='-fsanitize=fuzzer,address'"
-# Can also test in debug mode obviously, but might be slower
-# Can turn on more logging, in case of libFuzzer it will get very verbose though
+
+  honggfuzzClang = "--cc=clang " &
+                   "--clang.exe=hfuzz-clang " &
+                   "--clang.linkerexe=hfuzz-clang "
+
+  # Can also test in debug mode obviously, but might be slower
+  # Can turn on more logging, in case of libFuzzer it will get very verbose though
   defaultFlags = "-d:release -d:chronicles_log_level=fatal " &
                  "--hints:off --warnings:off --verbosity:0"
 
 type
-  Fuzzer* = enum
-    afl,
-    libFuzzer
-
   Compiler* = enum
     gcc = aflGcc,
     clang = aflClang,
     clangFast = aflClangFast
 
+template q(x: string): string =
+  quoteShell x
+
 proc aflCompile*(target: string, c: Compiler) =
   let aflOptions = &"-d:afl -d:noSignalHandler {$c}"
-  let compileCmd = &"nim c {defaultFlags} {aflOptions} {target.quoteShell()}"
+  let compileCmd = &"nim c {defaultFlags} {aflOptions} {q target}"
   exec compileCmd
 
 proc aflExec*(target: string,
@@ -62,42 +75,64 @@ proc aflExec*(target: string,
   var fuzzCmd: string
   # if there is an output dir already, continue fuzzing from previous run
   if (not dirExists(resultsDir)) or cleanStart:
-    fuzzCmd = &"afl-fuzz -i {inputDir.quoteShell()} -o {resultsDir.quoteShell()} -M fuzzer01 -- {exe.quoteShell()}"
+    fuzzCmd = &"afl-fuzz -i {q inputDir} -o {q resultsDir} -M fuzzer01 -- {q exe}"
   else:
-    fuzzCmd = &"afl-fuzz -i - -o {resultsDir.quoteShell()} -M fuzzer01 -- {exe.quoteShell()}"
+    fuzzCmd = &"afl-fuzz -i - -o {q resultsDir} -M fuzzer01 -- {q exe}"
   exec fuzzCmd
 
 proc libFuzzerCompile*(target: string) =
-  let libFuzzerOptions = &"-d:libFuzzer --noMain {libFuzzerClang}"
-  let compileCmd = &"nim c {defaultFlags} {libFuzzerOptions} {target.quoteShell()}"
+  let libFuzzerOptions = &"-d:llvmFuzzer --noMain {libFuzzerClang}"
+  let compileCmd = &"nim c {defaultFlags} {libFuzzerOptions} {q target}"
   exec compileCmd
 
 proc libFuzzerExec*(target: string, corpusDir: string) =
-  let exe = target.addFileExt(ExeExt)
   if not dirExists(corpusDir):
     # libFuzzer is OK when starting with empty corpus dir
     mkDir(corpusDir)
 
-  exec &"{exe.quoteShell()} {corpusDir.quoteShell()}"
+  exec &"{q target} {q corpusDir}"
 
-proc runFuzzer*(targetPath: string, fuzzer: Fuzzer, corpusDir: string) =
-  let (path, target, ext) = splitFile(targetPath)
+proc honggfuzzCompile*(target: string) =
+  let honggfuzzOptions = &"-d:llvmFuzzer --noMain {honggfuzzClang}"
+  let compileCmd = &"nim c {defaultFlags} {honggfuzzOptions} {q target}"
+  exec compileCmd
+
+proc honggfuzzExec*(target: string, corpusDir: string, outputDir: string) =
+  #if not dirExists(corpusDir):
+  #  # libFuzzer is OK when starting with empty corpus dir
+  #  mkDir(corpusDir)
+
+  # TODO:
+  # Other useful parameters:
+  # --threads|-n VALUE
+  #   Number of concurrent fuzzing threads (default: number of CPUs / 2)
+  # --workspace|-W VALUE
+  #   Workspace directory to save crashes & runtime files (default: '.')
+  # --crashdir VALUE
+  #   Directory where crashes are saved to (default: workspace directory)
+  # --covdir_new VALUE
+  #   New coverage (beyond the dry-run fuzzing phase) is written to this separate directory
+  # --dict|-w VALUE
+  #   Dictionary file. Format:http://llvm.org/docs/LibFuzzer.html#dictionaries
+  exec &"honggfuzz --persistent --input {q corpusDir} --output {q outputDir} -- {q target}"
+
+proc runFuzzer*(targetPath: string, fuzzer: FuzzingEngine, corpusDir: string) =
+  let
+    (path, target, ext) = splitFile(targetPath)
+    compiledExe = addFileExt(path / target, ExeExt)
+    corpusDir = if corpusDir.len > 0: corpusDir
+                else: path / "corpus"
 
   case fuzzer
   of afl:
-    # Note: Lets not mix afl input with libFuzzer corpus default. This can have
-    # consequences on speed for afl. Better to look into merging afl results &
-    # libFuzzer corpus.
-    var corpusDir = if corpusDir.len > 0: corpusDir
-                    else: path / "input"
-
     aflCompile(targetPath, clang)
-    aflExec(path / target, corpusDir, path / "results")
+    aflExec(compiledExe, corpusDir, path / "results")
 
   of libFuzzer:
-    var corpusDir = if corpusDir.len > 0: corpusDir
-                    else: path / "corpus"
-
     libFuzzerCompile(targetPath)
-    libFuzzerExec(path / target, corpusDir)
+    libFuzzerExec(compiledExe, corpusDir)
+
+  of honggfuzz:
+    honggfuzzCompile(targetPath)
+    honggfuzzExec(compiledExe, corpusDir, path / "results")
 

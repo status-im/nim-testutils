@@ -17,7 +17,7 @@ proc suicide() =
     discard
 
 template fuzz(body) =
-  when defined(libFuzzer):
+  when defined(llvmFuzzer):
     body
   else:
     try:
@@ -27,7 +27,7 @@ template fuzz(body) =
         msg=e.msg
       suicide()
 
-when not defined(libFuzzer):
+when not defined(llvmFuzzer):
   proc readStdin(): seq[byte] =
     let s = if paramCount() > 0: newFileStream(paramStr(1))
             else: newFileStream(stdin)
@@ -45,7 +45,7 @@ proc NimMain() {.importc: "NimMain".}
 
 # The default init, gets redefined when init template is used.
 template initImpl(): untyped =
-  when defined(libFuzzer):
+  when defined(llvmFuzzer):
     proc fuzzerInit(): cint {.exportc: "LLVMFuzzerInitialize".} =
       NimMain()
 
@@ -59,10 +59,10 @@ template init*(body: untyped) {.dirty.} =
   ## For AFL this is currently only cosmetic and will be run each time, before
   ## the test block.
   ##
-  ## For libFuzzer this will only be run once. So only put data which is
-  ## stateless or make sure everything gets properply reset for each new run in
-  ## the test block.
-  when defined(libFuzzer):
+  ## For LLVM fuzzers this will only be run once. So only put data which is
+  ## stateless or make sure everything gets properply reset for each new run
+  ## in the test block.
+  when defined(llvmFuzzer):
     template initImpl() {.dirty.} =
       bind NimMain
 
@@ -84,7 +84,7 @@ template test*(body: untyped): untyped =
   ## contains the payload provided by the fuzzer.
   mixin initImpl
   initImpl()
-  when defined(libFuzzer):
+  when defined(llvmFuzzer):
     proc fuzzerCall(data: ptr byte, len: csize):
         cint {.exportc: "LLVMFuzzerTestOneInput".} =
       template payload(): auto =
@@ -103,7 +103,7 @@ template test*(body: untyped): untyped =
 
       fuzzerCall()
 
-when defined(clangfast) and not defined(libFuzzer):
+when defined(clangfast) and not defined(llvmFuzzer):
   ## Can be used for deferred instrumentation.
   ## Should be placed on a suitable location in the code where the delayed
   ## cloning can take place (e.g. NOT after creation of threads)

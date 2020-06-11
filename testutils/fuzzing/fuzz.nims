@@ -28,6 +28,8 @@ of "afl":
   runFuzzer(targetPath, afl, corpusDir)
 of "libFuzzer":
   runFuzzer(targetPath, libFuzzer, corpusDir)
+of "honggfuzz":
+  runFuzzer(targetPath, honggfuzz, corpusDir)
 
 else:
   echo "Invalid fuzzer option: ", fuzzer
