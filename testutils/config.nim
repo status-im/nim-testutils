@@ -87,11 +87,6 @@ proc `backends=`*(config: var TestConfig; inputs: seq[string]) =
 proc `backends=`*(config: var TestConfig; input: string) =
   config.backends = input.split(" ")
 
-proc newTestConfig*(options = defaultFlags): TestConfig =
-  result.flags = options
-  result.backends = testutilsBackends
-  result.orderBy = defaultSort
-
 proc backends*(config: TestConfig): seq[string] =
   result = config.backendNames
 
@@ -115,7 +110,7 @@ proc cache*(config: TestConfig; backend: string): string =
                                                    $getCurrentProcessId() ]
 
 proc processArguments*(): TestConfig =
-  ## consume the arguments supplied to testrunner and yield a computed
+  ## consume the arguments supplied to ntu and yield a computed
   ## configuration object
   var
     opt = initOptParser()
@@ -124,12 +119,14 @@ proc processArguments*(): TestConfig =
     for element in list.items:
       result.incl element
 
-  result = newTestConfig()
   for kind, key, value in opt.getOpt:
     if result.cmd == noCommand:
       doAssert kind == cmdArgument
       result.cmd = parseEnum[Command](key)
-      echo "Command set to ", result.cmd
+      if result.cmd == test:
+        result.flags = defaultFlags
+        result.backends = testutilsBackends
+        result.orderBy = defaultSort
       continue
 
     case result.cmd
