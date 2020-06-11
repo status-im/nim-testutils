@@ -1,27 +1,15 @@
-import std/hashes
-import std/random
-import std/tables
-import std/sequtils
-import std/strtabs
-import std/os
-import std/osproc
-import std/strutils
-import std/terminal
-import std/times
-import std/pegs
-import std/algorithm
+import
+  std/[hashes, random, tables, sequtils, strtabs, strutils,
+       os, osproc, terminal, times, pegs, algorithm],
+  testutils/[spec, config, helpers, fuzzing_engines]
 
-import testutils/spec
-import testutils/config
-import testutils/helpers
-
-##[
+#[
 
 The runner will look recursively for all *.test files at given path. A
 test file should have at minimum a program name. This is the name of the
 nim source minus the .nim extension)
 
-]##
+]#
 
 
 # Code is here and there influenced by nim testament tester and unittest
@@ -442,36 +430,41 @@ proc performTesting(config: TestConfig;
     config.removeCaches(backend)
 
 proc main(): int =
-  let
-    config = processArguments()
-    testFiles = scanTestPath(config.path)
+  let config = processArguments()
 
-  if testFiles.len == 0:
-    styledEcho(styleBright, "No test files found")
-    result = 1
-  else:
-    var
-      tests = testFiles.mapIt config.parseTestFile(it)
-      backends = config.buildBackendTests(tests)
+  case config.cmd
+  of Command.test:
+    let testFiles = scanTestPath(config.path)
+    if testFiles.len == 0:
+      styledEcho(styleBright, "No test files found")
+      result = 1
+    else:
+      var
+        tests = testFiles.mapIt config.parseTestFile(it)
+        backends = config.buildBackendTests(tests)
 
-    # c > cpp > js
-    for backend in backendOrder:
-      assert backend != ""
-      # if we actually need to do anything on the given backend
-      if backend notin backends:
-        continue
-      let
-        tests = backends[backend]
-      try:
+      # c > cpp > js
+      for backend in backendOrder:
+        assert backend != ""
+        # if we actually need to do anything on the given backend
+        if backend notin backends:
+          continue
+        let
+          tests = backends[backend]
+        try:
+          if OK != config.performTesting(backend, tests):
+            break
+        finally:
+          backends.del(backend)
+
+      for backend, tests in backends.pairs:
+        assert backend != ""
         if OK != config.performTesting(backend, tests):
           break
-      finally:
-        backends.del(backend)
-
-    for backend, tests in backends.pairs:
-      assert backend != ""
-      if OK != config.performTesting(backend, tests):
-        break
+  of Command.fuzz:
+    runFuzzer(config.target, config.fuzzer, config.corpusDir)
+  of noCommand:
+    discard
 
 when isMainModule:
   quit main()

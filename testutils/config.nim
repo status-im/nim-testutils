@@ -1,15 +1,17 @@
-import std/sequtils
-import std/hashes
-import std/os
-import std/parseopt
-import std/strutils
-import std/algorithm
+import
+  std/[sequtils, hashes, os, parseopt, strutils, algorithm],
+  fuzzing_engines
 
 const
   Usage = """
 
   Usage:
-    testrunner [options] path
+    ntu COMMAND [options] <path>
+
+  Available commands:
+
+  $ ntu test [options] <path>
+
   Run the test(s) specified at path. Will search recursively for test files
   provided path is a directory.
 
@@ -22,6 +24,15 @@ const
   --reverse                   Reverse the order of tests
   --random                    Shuffle the order of tests
   --help                      Display this help and exit
+
+  $ ntu fuzz [options] <module>
+
+  Start a fuzzing test with a Nim module based on testutils/fuzzing.
+
+  Options:
+  --fuzzer:libFuzzer         The fuzzing engine to use.
+                             Possible values: libFuzzer, honggfuzz, afl
+  --corpus:<path>            A directory with initial input cases
 
   """.unindent.strip
 
@@ -40,15 +51,28 @@ type
     Test     = "test"
     Reverse  = "reverse"
 
-  TestConfig* = object
-    path*: string
-    includedTests*: seq[string]
-    excludedTests*: seq[string]
+  Command* = enum
+    noCommand
+    test
+    fuzz
 
-    flags*: set[FlagKind]
-    # options
-    backendNames*: seq[string]
-    orderBy*: set[SortBy]
+  TestConfig* = object
+    case cmd*: Command
+    of test:
+      path*: string
+      includedTests*: seq[string]
+      excludedTests*: seq[string]
+
+      flags*: set[FlagKind]
+      # options
+      backendNames*: seq[string]
+      orderBy*: set[SortBy]
+    of fuzz:
+      fuzzer*: FuzzingEngine
+      corpusDir*: string
+      target*: string
+    of noCommand:
+      discard
 
 const
   defaultFlags = {UseThreads}
@@ -102,42 +126,77 @@ proc processArguments*(): TestConfig =
 
   result = newTestConfig()
   for kind, key, value in opt.getOpt:
-    case kind
-    of cmdArgument:
-      if result.path == "":
-        result.path = absolutePath(key)
-    of cmdLongOption, cmdShortOption:
-      case key.toLowerAscii
-      of "help", "h":
-        quit(Usage, QuitSuccess)
-      of "reverse", "random":
-        let
-          flag = parseEnum[SortBy](value)
-        if flag in result.orderBy:
-          result.orderBy.excl flag
-        else:
-          result.orderBy.incl flag
-      of "sort":
-        result.orderBy = toSet value.split(",").mapIt parseEnum[SortBy](it)
-      of "backend", "backends", "targets", "t":
-        result.backends = value
-      of "release", "danger":
-        result.flags.incl ReleaseBuild
-        result.flags.incl DangerBuild
-      of "nothreads":
-        result.flags.excl UseThreads
-      of "update":
-        result.flags.incl UpdateOutputs
-      of "include":
-        result.includedTests.add value.split(Whitespace + {','})
-      of "exclude":
-        result.excludedTests.add value.split(Whitespace + {','})
-      else:
-        quit(Usage)
-    of cmdEnd:
-      quit(Usage)
+    if result.cmd == noCommand:
+      doAssert kind == cmdArgument
+      result.cmd = parseEnum[Command](key)
+      echo "Command set to ", result.cmd
+      continue
 
-  if result.path == "":
+    case result.cmd
+    of test:
+      case kind
+      of cmdArgument:
+        if result.path == "":
+          result.path = absolutePath(key)
+      of cmdLongOption, cmdShortOption:
+        case key.toLowerAscii
+        of "help", "h":
+          quit(Usage, QuitSuccess)
+        of "reverse", "random":
+          let
+            flag = parseEnum[SortBy](value)
+          if flag in result.orderBy:
+            result.orderBy.excl flag
+          else:
+            result.orderBy.incl flag
+        of "sort":
+          result.orderBy = toSet value.split(",").mapIt parseEnum[SortBy](it)
+        of "backend", "backends", "targets", "t":
+          result.backends = value
+        of "release", "danger":
+          result.flags.incl ReleaseBuild
+          result.flags.incl DangerBuild
+        of "nothreads":
+          result.flags.excl UseThreads
+        of "update":
+          result.flags.incl UpdateOutputs
+        of "include":
+          result.includedTests.add value.split(Whitespace + {','})
+        of "exclude":
+          result.excludedTests.add value.split(Whitespace + {','})
+        else:
+          quit(Usage)
+      of cmdEnd:
+        quit(Usage)
+
+    of fuzz:
+      case kind
+      of cmdArgument:
+        result.target = key
+      of cmdLongOption, cmdShortOption:
+        echo "got key ", key
+        case key.toLowerAscii:
+        of "f", "fuzzer":
+          result.fuzzer = parseEnum[FuzzingEngine](value)
+        of "c", "corpus":
+          result.corpusDir = absolutePath(value)
+        else:
+          quit(Usage)
+      else:
+        echo "got kind ", kind
+        quit(Usage)
+
+    of noCommand:
+      discard
+
+  case result.cmd
+  of test:
+    if result.path == "":
+      quit(Usage)
+  of fuzz:
+    if result.target == "":
+      quit(Usage)
+  else:
     quit(Usage)
 
 func shouldSkip*(config: TestConfig, name: string): bool =
