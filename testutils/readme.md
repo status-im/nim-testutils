@@ -6,18 +6,34 @@
 Command syntax:
 
 ```sh
-testrunner [options] path
-Run the test(s) specified at path. Will search recursively for test files
-provided path is a directory.
-Options:
---backends:"c cpp js objc"  Run tests for specified targets
---include:"test1 test2"     Run only listed tests (space/comma seperated)
---exclude:"test1 test2"     Skip listed tests (space/comma seperated)
---update                    Rewrite failed tests with new output
---sort:"source,test"        Sort the tests by program and/or test mtime
---reverse                   Reverse the order of tests
---random                    Shuffle the order of tests
---help                      Display this help and exit
+  Usage:
+    ntu COMMAND [options] <path>
+
+  Available commands:
+
+  $ ntu test [options] <path>
+
+  Run the test(s) specified at path. Will search recursively for test files
+  provided path is a directory.
+
+  Options:
+  --backends:"c cpp js objc"  Run tests for specified targets
+  --include:"test1 test2"     Run only listed tests (space/comma separated)
+  --exclude:"test1 test2"     Skip listed tests (space/comma separated)
+  --update                    Rewrite failed tests with new output
+  --sort:"source,test"        Sort the tests by program and/or test mtime
+  --reverse                   Reverse the order of tests
+  --random                    Shuffle the order of tests
+  --help                      Display this help and exit
+
+  $ ntu fuzz [options] <module>
+
+  Start a fuzzing test with a Nim module based on testutils/fuzzing.
+
+  Options:
+  --fuzzer:libFuzzer         The fuzzing engine to use.
+                             Possible values: libFuzzer, honggfuzz, afl
+  --corpus:<path>            A directory with initial input cases
 ```
 
 The runner will look recursively for all `*.test` files at given path.
@@ -104,14 +120,14 @@ args = "--newlines"
 
 ### Updating Expected Outputs
 
-Pass the `--update` argument to `testrunner` to rewrite any failing test with
+Pass the `--update` argument to `ntu` to rewrite any failing test with
 the new outputs of the test.
 
 ### Concurrent Test Execution
 
-When built with threads, `testrunner` will run multiple test invocations
-defined in each test file simultaneously. You can specify `nothreads` in the
-_preamble_ to disable this behavior.
+When built with threads, `ntu` will run multiple test invocations
+defined in each test file simultaneously. You can specify `nothreads`
+in the _preamble_ to disable this behavior.
 
 ```ini
 nothreads = true
@@ -143,22 +159,22 @@ args = "--second"
 
 ### Testing Alternate Backends
 
-By default, `testrunner` builds tests using Nim's C backend. Specify the
-`--backends` command-line option to build and run run tests with the backends
-of your choice.
+By default, `ntu` builds tests using Nim's C backend.
+Specify the `--backends` command-line option to build and run run tests with
+the backends of your choice.
 
 ```sh
-$ testrunner --backends="c cpp" tests
+$ ntu test --backends="c cpp" tests
 ```
 
 ### Setting the Order of Tests
 
-By default, `testrunner` will order test compilation and execution according
-to the modification time of the test program source.  You can choose to sort
-by test program mtime, too.
+By default, `ntu` will order test compilation and execution according to the
+modification time of the test program source.  You can choose to sort by test
+program mtime, too.
 
 ```sh
-$ testrunner --sort:test suite/
+$ ntu test --sort:test suite/
 ```
 
 You can `--reverse` or `--random`ize the order of tests, too.

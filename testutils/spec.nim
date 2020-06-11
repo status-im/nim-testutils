@@ -198,6 +198,6 @@ proc parseTestFile*(config: TestConfig; filePath: string): TestSpec =
     finally:
       close p
 
-    # we catch this in testrunner and crash there if needed
+    # we catch this in ntu and crash there if needed
     if result.program == "":
       echo "Parsing error: no program value"
