@@ -6,10 +6,11 @@ author        = "Status Research & Development GmbH"
 description   = "A unittest framework"
 license       = "Apache License 2.0"
 skipDirs      = @["tests"]
-bin           = @["testrunner"]
+bin           = @["ntu"]
 #srcDir        = "testutils"
 
-requires "nim >= 1.0.2"
+requires "nim >= 1.0.2",
+         "testutils"
 
 proc execCmd(cmd: string) =
   echo "execCmd: " & cmd
