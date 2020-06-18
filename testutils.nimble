@@ -9,8 +9,7 @@ skipDirs      = @["tests"]
 bin           = @["ntu"]
 #srcDir        = "testutils"
 
-requires "nim >= 1.0.2",
-         "confutils"
+requires "nim >= 1.0.2"
 
 proc execCmd(cmd: string) =
   echo "execCmd: " & cmd
