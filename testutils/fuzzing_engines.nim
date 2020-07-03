@@ -1,4 +1,4 @@
-import strformat, ospaths
+import strformat, os
 
 const
   aflGcc = "--cc=gcc " &
