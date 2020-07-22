@@ -1,4 +1,5 @@
-import strformat, os
+import strformat
+import os except dirExists
 
 const
   aflGcc = "--cc=gcc " &
