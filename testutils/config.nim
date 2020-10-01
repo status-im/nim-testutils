@@ -171,7 +171,6 @@ proc processArguments*(): TestConfig =
       of cmdArgument:
         result.target = key
       of cmdLongOption, cmdShortOption:
-        echo "got key ", key
         case key.toLowerAscii:
         of "f", "fuzzer":
           result.fuzzer = parseEnum[FuzzingEngine](value)
