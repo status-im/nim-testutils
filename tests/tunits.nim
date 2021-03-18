@@ -1,4 +1,4 @@
-import unittest
+import unittest2
 
 suite "goats":
   test "pigs":

@@ -1,8 +1,8 @@
 import
-  unittest
+  unittest2
 
 export
-  unittest
+  unittest2
 
 template procSuite*(name: string, body: untyped) =
   proc suitePayload =

@@ -2,8 +2,8 @@
 
 template tests*(body: untyped) =
   template payload =
-    when not declared(unittest):
-      import unittest
+    when not declared(unittest2):
+      import unittest2
 
     body
 
