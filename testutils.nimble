@@ -9,7 +9,8 @@ skipDirs      = @["tests"]
 bin           = @["ntu"]
 #srcDir        = "testutils"
 
-requires "nim >= 1.0.2"
+requires "nim >= 1.2.6",
+         "https://github.com/status-im/nim-unittest2.git#head"
 
 proc execCmd(cmd: string) =
   echo "execCmd: " & cmd
