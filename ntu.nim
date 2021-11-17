@@ -19,7 +19,7 @@ const
   # defaultOptions = "--verbosity:1 --warnings:off --hint[Processing]:off " &
   #                  "--hint[Conf]:off --hint[XDeclaredButNotUsed]:off " &
   #                  "--hint[Link]:off --hint[Pattern]:off"
-  defaultOptions = "--verbosity:1 --warnings:on "
+  defaultOptions = "--verbosity:1 --warnings:on --skipUserCfg:on --skipParentCfg:on "
   backendOrder = @["c", "cpp", "js"]
 
 type
@@ -399,7 +399,7 @@ proc performTesting(config: TestConfig;
         try:
           time duration:
             result = compile(spec, backend)
-            if result != OK or spec.compileError.len != 0:
+            if result != OK:
               failed.inc
               break escapeBlock
         finally:
@@ -429,6 +429,13 @@ proc performTesting(config: TestConfig;
   if 0 == tests.len - successful - nonSuccesful:
     config.removeCaches(backend)
 
+  if failed != 0:
+    result = FAILED
+  elif invalid != 0:
+    result = INVALID
+  else:
+    result = OK
+
 proc main(): int =
   let config = processArguments()
 
@@ -453,14 +460,14 @@ proc main(): int =
           tests = backends[backend]
         try:
           if OK != config.performTesting(backend, tests):
-            break
+            quit QuitFailure
         finally:
           backends.del(backend)
 
       for backend, tests in backends.pairs:
         assert backend != ""
         if OK != config.performTesting(backend, tests):
-          break
+          quit QuitFailure
   of Command.fuzz:
     runFuzzer(config.target, config.fuzzer, config.corpusDir)
   of noCommand:
