@@ -148,14 +148,6 @@ jobs:
             bash build_nim.sh nim csources dist/nimble NimBinaries
           echo '${{ github.workspace }}/nim/bin' >> $GITHUB_PATH
 
-      - name: Setup environment
-        run: |
-          if [[ '${{ matrix.target.os }}' == 'linux' ]]; then
-            echo '/home/runner/.nimble/bin' >> $GITHUB_PATH
-          else
-            echo '~/.nimble/bin' >> $GITHUB_PATH
-          fi
-
       - name: Run tests
         run: |
           nim --version
