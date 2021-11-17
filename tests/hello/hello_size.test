@@ -1,5 +1,5 @@
 program = "../hello"
-max_size = 60000
+max_size = 100000
 release
 --opt:size
 os = "linux,macosx"
