@@ -45,7 +45,7 @@ jobs:
     runs-on: ${{ matrix.builder }}
     continue-on-error: ${{ matrix.branch == 'version-1-6' || matrix.branch == 'devel' }}
     steps:
-      - name: Checkout nim-chronicles
+      - name: Checkout
         uses: actions/checkout@v2
 
       - name: Install build dependencies (Linux i386)
@@ -156,7 +156,7 @@ jobs:
             echo '~/.nimble/bin' >> $GITHUB_PATH
           fi
 
-      - name: Run nim-chronicles tests
+      - name: Run tests
         run: |
           nim --version
           nimble --version
