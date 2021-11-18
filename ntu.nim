@@ -16,10 +16,7 @@ nim source minus the .nim extension)
 # module.
 
 const
-  # defaultOptions = "--verbosity:1 --warnings:off --hint[Processing]:off " &
-  #                  "--hint[Conf]:off --hint[XDeclaredButNotUsed]:off " &
-  #                  "--hint[Link]:off --hint[Pattern]:off"
-  defaultOptions = "--verbosity:1 --warnings:on --skipUserCfg:on --skipParentCfg:on "
+  defaultOptions = "--verbosity:1 --warnings:on --skipUserCfg:on "
   backendOrder = @["c", "cpp", "js"]
 
 type
