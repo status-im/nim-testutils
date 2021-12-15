@@ -13,10 +13,9 @@ template tests*(body: untyped) =
     when not compiles(payload()):
       payload()
 
-template programMain*(body: untyped) =
+template programMain*(body: untyped) {.dirty.} =
   proc main =
     body
 
-  when not defined(testutils_test_build):
+  when isMainModule and not defined(testutils_test_build):
     main()
-
