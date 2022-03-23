@@ -130,7 +130,7 @@ proc composeOutputs(test: TestSpec, stdout: string): TestOutputs =
     if name == "stdout":
       result[name] = stdout
     else:
-      if not existsFile(name):
+      if not fileExists(name):
         continue
       result[name] = readFile(name)
       removeFile(name)
@@ -161,7 +161,7 @@ proc cmpOutputs(test: TestSpec, outputs: TestOutputs): TestStatus =
 proc compile(test: TestSpec; backend: string): TestStatus =
   ## compile the test program for the requested backends
   block:
-    if not existsFile(test.source):
+    if not fileExists(test.source):
       logFailure(test, SourceFileNotFound)
       result = FAILED
       break
