@@ -25,7 +25,7 @@ const
 
   # Can also test in debug mode obviously, but might be slower
   # Can turn on more logging, in case of libFuzzer it will get very verbose though
-  defaultFlags = "-d:release -d:chronicles_log_level=fatal " &
+  defaultFlags = "-d:release -d:useMalloc -g -d:chronicles_log_level=fatal " &
                  "--hints:off --warnings:off --verbosity:0"
 
 type
@@ -96,7 +96,7 @@ proc aflExec*(target: string,
   exec fuzzCmd
 
 proc libFuzzerCompile*(target: string) =
-  let libFuzzerOptions = &"-d:llvmFuzzer --noMain {libFuzzerClang}"
+  let libFuzzerOptions = &"-d:llvmFuzzer -d:noSignalHandler --noMain {libFuzzerClang}"
   let compileCmd = &"nim c {defaultFlags} {libFuzzerOptions} {q target}"
   exec compileCmd
 
@@ -108,7 +108,7 @@ proc libFuzzerExec*(target: string, corpusDir: string) =
   exec &"{q target} {q corpusDir}"
 
 proc honggfuzzCompile*(target: string) =
-  let honggfuzzOptions = &"-d:llvmFuzzer --noMain {honggfuzzClang}"
+  let honggfuzzOptions = &"-d:llvmFuzzer -d:noSignalHandler --noMain {honggfuzzClang}"
   let compileCmd = &"nim c {defaultFlags} {honggfuzzOptions} {q target}"
   exec compileCmd
 
