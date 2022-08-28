@@ -103,6 +103,20 @@ template test*(body: untyped): untyped =
 
       fuzzerCall()
 
+when defined(llvmFuzzer):
+  import drchaos/mutator
+
+  template test*(typ: typedesc, body: untyped): untyped =
+    ## Test block to do the actual test that will be fuzzed in a loop.
+    ##
+    ## Within this test block there is access to the structured input `typ`
+    ## which contains the payload provided by the fuzzer.
+    mixin initImpl
+    initImpl()
+    func fuzzTarget(payload {.inject.}: typ) =
+      body
+    mutatorImpl(fuzzTarget, myMutator, typ)
+
 when defined(clangfast) and not defined(llvmFuzzer):
   ## Can be used for deferred instrumentation.
   ## Should be placed on a suitable location in the code where the delayed

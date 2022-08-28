@@ -10,7 +10,8 @@ bin           = @["ntu"]
 #srcDir        = "testutils"
 
 requires "nim >= 1.2.0",
-         "unittest2"
+         "unittest2",
+         "drchaos"
 
 proc execCmd(cmd: string) =
   echo "execCmd: " & cmd
