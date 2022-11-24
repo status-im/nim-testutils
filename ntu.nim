@@ -160,11 +160,11 @@ proc cmpOutputs(test: TestSpec, outputs: TestOutputs): TestStatus =
 
 proc compile(test: TestSpec; backend: string): TestStatus =
   ## compile the test program for the requested backends
-  block:
+  block escapeBlock:
     if not fileExists(test.source):
       logFailure(test, SourceFileNotFound)
       result = FAILED
-      break
+      break escapeBlock
 
     let
       binary = test.binary(backend)
@@ -190,7 +190,7 @@ proc compile(test: TestSpec; backend: string): TestStatus =
         if test.compileError.len == 0:
           logFailure(test, CompileError, compileInfo.fullMsg)
           result = FAILED
-          break
+          break escapeBlock
         else:
           if test.compileError == compileInfo.msg and
              (test.errorFile.len == 0 or test.errorFile == compileInfo.errorFile) and
@@ -200,7 +200,7 @@ proc compile(test: TestSpec; backend: string): TestStatus =
           else:
             logFailure(test, CompileErrorDiffers, compileInfo.fullMsg)
             result = FAILED
-            break
+            break escapeBlock
 
       # Lets also check file size here as it kinda belongs to the
       # compilation result
@@ -209,7 +209,7 @@ proc compile(test: TestSpec; backend: string): TestStatus =
         if size > test.maxSize:
           logFailure(test, FileSizeTooLarge, $size)
           result = FAILED
-          break
+          break escapeBlock
 
       result = OK
     finally:
