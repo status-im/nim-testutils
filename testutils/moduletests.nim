@@ -14,7 +14,7 @@ template tests*(body: untyped) =
       payload()
 
 template programMain*(body: untyped) {.dirty.} =
-  proc main =
+  proc main {.raises: [CatchableError].} =
     body
 
   when isMainModule and not defined(testutils_test_build):
