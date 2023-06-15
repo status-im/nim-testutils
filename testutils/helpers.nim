@@ -64,7 +64,7 @@ proc parseCompileStream*(p: Process, output: Stream): CompileInfo =
   ## parsing compiler output (based on testament tester)
   result.exitCode = -1
   var
-    line = newStringOfCap(120).TaintedString
+    line = newStringOfCap(120)
     suc, err, tmpl = ""
 
   while true:
