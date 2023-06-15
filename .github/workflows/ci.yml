@@ -154,4 +154,3 @@ jobs:
           nimble --version
           nimble install -y --depsOnly
           nimble test
-
