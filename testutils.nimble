@@ -9,7 +9,7 @@ skipDirs      = @["tests"]
 bin           = @["ntu"]
 #srcDir        = "testutils"
 
-requires "nim >= 1.2.0",
+requires "nim >= 1.6.0",
          "unittest2"
 
 proc execCmd(cmd: string) =
@@ -25,7 +25,6 @@ proc execTest(test: string) =
     execCmd "nim c   -d:danger  -r " & test
     execCmd "nim cpp            -r " & test
     execCmd "nim cpp -d:danger  -r " & test
-    #when NimMajor >= 1 and NimMinor >= 1 and not defined(macosx):
     when false:
       # we disable gc:arc test here because Nim cgen
       # generate something not acceptable for clang
