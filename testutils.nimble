@@ -17,22 +17,19 @@ proc execCmd(cmd: string) =
   exec cmd
 
 proc execTest(test: string) =
-  let
-    test = "ntu test " & test
-  when true:
-    execCmd "nim c           -f -r " & test
-    execCmd "nim c   -d:release -r " & test
-    execCmd "nim c   -d:danger  -r " & test
-    execCmd "nim cpp            -r " & test
-    execCmd "nim cpp -d:danger  -r " & test
-    when false:
-      # we disable gc:arc test here because Nim cgen
-      # generate something not acceptable for clang
-      # and failed on windows 64 bit too
-      execCmd "nim c   --gc:arc --exceptions:goto -r " & test
-      execCmd "nim cpp --gc:arc --exceptions:goto -r " & test
-  else:
-    execCmd "nim c           -f -r " & test
+  let test = "ntu test " & test
+  execCmd "nim c           -f -r " & test
+  execCmd "nim c   -d:release -r " & test
+  execCmd "nim c   -d:danger  -r " & test
+  execCmd "nim cpp            -r " & test
+  execCmd "nim cpp -d:danger  -r " & test
+  execCmd "nim c   --gc:arc --exceptions:goto -r " & test
+  when false:
+    # we disable gc:arc test here because Nim cgen
+    # generate something not acceptable for clang
+    # and failed on windows 64 bit too
+    # TODO https://github.com/nim-lang/Nim/issues/22101
+    execCmd "nim cpp --gc:arc --exceptions:goto -r " & test
 
 task test, "run tests for travis":
   execTest("tests")
