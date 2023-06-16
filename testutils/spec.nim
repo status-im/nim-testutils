@@ -151,13 +151,13 @@ proc parseTestFile*(config: TestConfig; filePath: string): TestSpec =
   result.path = absolutePath(filePath)
   result.pathComponents = splitFile result.path
   result.config = config
-  block:
+  block escapeBlock:
     var
       f = newFileStream(result.path, fmRead)
     if f == nil:
       # XXX crash?
       echo "Parsing error: cannot open " & result.path
-      break
+      break escapeBlock
 
     var
       outputSection = false
