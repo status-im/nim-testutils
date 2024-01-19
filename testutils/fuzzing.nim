@@ -32,7 +32,7 @@ when not defined(llvmFuzzer):
     let s = if paramCount() > 0: newFileStream(paramStr(1))
             else: newFileStream(stdin)
     if s.isNil:
-      error "Error opening input stream"
+      chronicles.error "Error opening input stream"
       suicide()
     # We use binary files as with hex we can get lots of "not hex" failures
     var input = s.readAll()
