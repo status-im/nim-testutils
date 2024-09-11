@@ -18,11 +18,18 @@ proc execCmd(cmd: string) =
 
 proc execTest(test: string) =
   let test = "ntu test " & test
-  execCmd "nim c           -f -r " & test
-  execCmd "nim c   -d:release -r " & test
-  execCmd "nim c   -d:danger  -r " & test
-  execCmd "nim cpp            -r " & test
-  execCmd "nim cpp -d:danger  -r " & test
+  execCmd "nim c   --mm:refc         -f -r " & test
+  execCmd "nim c   --mm:refc -d:release -r " & test
+  execCmd "nim c   --mm:refc -d:danger  -r " & test
+  execCmd "nim cpp --mm:refc            -r " & test
+  execCmd "nim cpp --mm:refc -d:danger  -r " & test
+  if (NimMajor, NimMinor) > (1, 6):
+    execCmd "nim c   --mm:orc         -f -r " & test
+    execCmd "nim c   --mm:orc -d:release -r " & test
+    execCmd "nim c   --mm:orc -d:danger  -r " & test
+    execCmd "nim cpp --mm:orc            -r " & test
+    execCmd "nim cpp --mm:orc -d:danger  -r " & test
+
   execCmd "nim c   --gc:arc --exceptions:goto -r " & test
   when false:
     # we disable gc:arc test here because Nim cgen
