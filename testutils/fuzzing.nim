@@ -1,4 +1,5 @@
-import os, streams, strutils, chronicles, macros, stew/ranges/ptr_arith
+import os, streams, strutils, chronicles, stew/ptrops
+import macros except error
 
 when not defined(windows):
   import posix
