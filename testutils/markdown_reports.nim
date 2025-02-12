@@ -4,7 +4,7 @@ type
   Status* {.pure.} = enum OK, Fail, Skip
 
 proc generateReport*(title: string; data: OrderedTable[string, OrderedTable[string, Status]];
-                     width = 63) =
+                     width = 63; withTotals = true) =
   ## Generate a markdown report from test data and write it to a file with the given title.
   ## The table keys are sections, and the nested tables map tests to statuses.
   let symbol: array[Status, string] = ["+", "-", " "]
@@ -31,14 +31,16 @@ proc generateReport*(title: string; data: OrderedTable[string, OrderedTable[stri
       of Status.Fail: failCount += 1
       of Status.Skip: skipCount += 1
     raw.add("```\n")
-    let sum = okCount + failCount + skipCount
-    okCountTotal += okCount
-    failCountTotal += failCount
-    skipCountTotal += skipCount
-    raw.add("OK: $1/$4 Fail: $2/$4 Skip: $3/$4\n" % [$okCount, $failCount, $skipCount, $sum])
+    if withTotals:
+      let sum = okCount + failCount + skipCount
+      okCountTotal += okCount
+      failCountTotal += failCount
+      skipCountTotal += skipCount
+      raw.add("OK: $1/$4 Fail: $2/$4 Skip: $3/$4\n" % [$okCount, $failCount, $skipCount, $sum])
 
-  let sumTotal = okCountTotal + failCountTotal + skipCountTotal
-  raw.add("\n---TOTAL---\n")
-  raw.add("OK: $1/$4 Fail: $2/$4 Skip: $3/$4\n" % [$okCountTotal, $failCountTotal,
-                                                   $skipCountTotal, $sumTotal])
+  if withTotals:
+    let sumTotal = okCountTotal + failCountTotal + skipCountTotal
+    raw.add("\n---TOTAL---\n")
+    raw.add("OK: $1/$4 Fail: $2/$4 Skip: $3/$4\n" % [$okCountTotal, $failCountTotal,
+                                                     $skipCountTotal, $sumTotal])
   writeFile(title & ".md", raw)
