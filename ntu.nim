@@ -262,26 +262,6 @@ proc execute(test: TestSpec): TestStatus =
           # and we want any dependent testing to proceed as usual.
           result = SKIPPED
 
-proc executeAll(test: TestSpec): TestStatus =
-  ## run a test and any dependent children, yielding a single status
-  when compileOption("threads"):
-    try:
-      var
-        thread: TestThread
-      # we spawn and join the test here so that it can receive
-      # cpu affinity via the standard thread.pinToCpu method
-      discard thread.spawnTest(test, 0)
-      thread.joinThreads
-    except:
-      # any thread(?) exception is a failure
-      result = FAILED
-  else:
-    # unthreaded serial test execution
-    result = SKIPPED
-    while test != nil and result in {OK, SKIPPED}:
-      result = test.execute
-      test = test.child
-
 proc threadedExecute(payload: ThreadPayload) {.thread.} =
   ## a thread in which we'll perform a test execution given the payload
   var
@@ -329,19 +309,6 @@ proc scanTestPath(path: string): seq[string] =
     for file in walkDirRec path:
       if file.endsWith ".test":
         result.add file
-
-proc test(test: TestSpec; backend: string): TestStatus =
-  let
-    config = test.config
-  var
-    duration: float
-
-  try:
-    time duration:
-      # perform all tests in the test file
-      result = test.executeAll
-  finally:
-    logResult(test.name, result, duration)
 
 proc buildBackendTests(config: TestConfig;
                        tests: seq[TestSpec]): BackendTests =
