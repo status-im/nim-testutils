@@ -264,7 +264,9 @@ proc execute(test: TestSpec): TestStatus =
 
 proc executeAll(test: TestSpec): TestStatus =
   ## run a test and any dependent children, yielding a single status
-  when compileOption("threads"):
+  when false and compileOption("threads"):
+    # TODO parallel execution disabled because `threadedExecute` raises an
+    #      uncaught exception on failure causing ntu to crash
     try:
       var
         thread: TestThread
@@ -278,6 +280,7 @@ proc executeAll(test: TestSpec): TestStatus =
   else:
     # unthreaded serial test execution
     result = SKIPPED
+    var test = test
     while test != nil and result in {OK, SKIPPED}:
       result = test.execute
       test = test.child
@@ -404,7 +407,15 @@ proc performTesting(config: TestConfig;
                     result, duration)
 
     if result == OK:
-      successful.inc
+      case spec.test(backend)
+      of OK:
+        successful.inc
+      of SKIPPED:
+        skipped.inc
+      of FAILED:
+        failed.inc
+      of INVALID:
+        invalid.inc
 
   let nonSuccesful = skipped + invalid + failed
   styledEcho(styleBright, "Finished run for $#: $#/$# OK, $# SKIPPED, $# FAILED, $# INVALID" %
