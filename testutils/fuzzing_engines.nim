@@ -1,5 +1,5 @@
 import strformat
-import os
+import os except dirExists
 
 const
   aflGcc = "--cc=gcc " &
@@ -43,7 +43,7 @@ const
   defaultFuzzingEngine* = libFuzzer
 
 when not defined(nimscript):
-  import osproc
+  import os, osproc
 
   template exec(cmd: string) =
     discard execCmd(cmd)
@@ -133,7 +133,7 @@ proc honggfuzzExec*(target: string, corpusDir: string, outputDir: string) =
 
 proc runFuzzer*(targetPath: string, fuzzer: FuzzingEngine, corpusDir: string) =
   let
-    (path, target, _) = splitFile(targetPath)
+    (path, target, ext) = splitFile(targetPath)
     compiledExe = addFileExt(path / target, ExeExt)
     corpusDir = if corpusDir.len > 0: corpusDir
                 else: path / "corpus"
