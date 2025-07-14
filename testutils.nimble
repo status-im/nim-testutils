@@ -1,7 +1,7 @@
 mode = ScriptMode.Verbose
 
 packageName   = "testutils"
-version       = "0.7.0"
+version       = "0.8.0"
 author        = "Status Research & Development GmbH"
 description   = "A unittest framework"
 license       = "Apache License 2.0"
