@@ -119,10 +119,11 @@ proc processArguments*(): TestConfig =
     for element in list.items:
       result.incl element
 
+
   for kind, key, value in opt.getopt:
     if result.cmd == noCommand:
       doAssert kind == cmdArgument
-      result.cmd = parseEnum[Command](key)
+      result = TestConfig(cmd: parseEnum[Command](key))
       if result.cmd == test:
         result.flags = defaultFlags
         result.backends = testutilsBackends
