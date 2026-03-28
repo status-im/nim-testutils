@@ -119,7 +119,6 @@ proc processArguments*(): TestConfig =
     for element in list.items:
       result.incl element
 
-
   for kind, key, value in opt.getopt:
     if result.cmd == noCommand:
       doAssert kind == cmdArgument
