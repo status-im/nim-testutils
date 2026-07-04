@@ -1,12 +1,7 @@
-import os, streams, strutils, chronicles, macros, stew/ptrops
+import std/[os, streams, strutils, macros], stew/ptrops
 
 when not defined(windows):
   import posix
-
-# if user forget to import chronicles
-# they still can compile without mysterious
-# error such as "undeclared identifier: 'activeChroniclesStream'"
-export chronicles
 
 proc suicide() =
   # For code we want to fuzz, SIGSEGV is needed on unwanted exceptions.
@@ -23,8 +18,8 @@ template fuzz(body) =
     try:
       body
     except Exception as e:
-      error "Fuzzer input created exception", exception=e.name, trace=e.repr,
-        msg=e.msg
+      echo "Fuzzer input created exception: name=", e.name,
+        " msg=", e.msg, " trace=", e.repr
       suicide()
 
 when not defined(llvmFuzzer):
@@ -32,7 +27,7 @@ when not defined(llvmFuzzer):
     let s = if paramCount() > 0: newFileStream(paramStr(1))
             else: newFileStream(stdin)
     if s.isNil:
-      chronicles.error "Error opening input stream"
+      echo "Error opening input stream"
       suicide()
     # We use binary files as with hex we can get lots of "not hex" failures
     var input = s.readAll()
