@@ -1,5 +1,7 @@
-import strformat
-import os except dirExists
+import std/[oids, strformat]
+import results
+import stew/[byteutils, io2]
+export results
 
 const
   aflGcc = "--cc=gcc " &
@@ -61,12 +63,14 @@ when not defined(nimscript):
     ##   withDir "foo":
     ##     # inside foo
     ##   #back to last dir
-    var curDir = getCurrentDir()
+    var curDir = os.getCurrentDir()
     try:
       setCurrentDir(dir)
       body
     finally:
       setCurrentDir(curDir)
+else:
+  import os except dirExists
 
 template q(x: string): string =
   quoteShell x
@@ -78,8 +82,9 @@ proc aflCompile*(target: string, c: AflCompiler) =
 
 proc aflExec*(target: string,
               inputDir: string,
-              resultsDir: string,
-              cleanStart = false) =
+              outputDir: string,
+              duration = 0,
+              cleanStart = false): Opt[void] =
   let exe = target.addFileExt(ExeExt)
   if not dirExists(inputDir):
     # create a input dir with one 0 file for afl
@@ -87,35 +92,52 @@ proc aflExec*(target: string,
     # TODO: improve
     withDir inputDir: exec "echo '0' > test"
 
+  let durArg = if duration > 0: " -V " & $duration else: ""
   var fuzzCmd: string
   # if there is an output dir already, continue fuzzing from previous run
-  if (not dirExists(resultsDir)) or cleanStart:
-    fuzzCmd = &"afl-fuzz -i {q inputDir} -o {q resultsDir} -M fuzzer01 -- {q exe}"
+  if (not dirExists(outputDir)) or cleanStart:
+    fuzzCmd =
+      &"AFL_BENCH_UNTIL_CRASH=1 afl-fuzz -i {q inputDir} " &
+      &"-o {q outputDir}{durArg} -M fuzzer01 -- {q exe}"
   else:
-    fuzzCmd = &"afl-fuzz -i - -o {q resultsDir} -M fuzzer01 -- {q exe}"
-  exec fuzzCmd
+    fuzzCmd =
+      &"AFL_BENCH_UNTIL_CRASH=1 afl-fuzz -i - " &
+      &"-o {q outputDir}{durArg} -M fuzzer01 -- {q exe}"
+  if execCmd(fuzzCmd) != 0:
+    return err()
+  ok()
 
 proc libFuzzerCompile*(target: string) =
   let libFuzzerOptions = &"-d:llvmFuzzer --noMain {libFuzzerClang}"
   let compileCmd = &"nim c {defaultFlags} {libFuzzerOptions} {q target}"
   exec compileCmd
 
-proc libFuzzerExec*(target: string, corpusDir: string) =
+proc libFuzzerExec*(
+    target: string, corpusDir: string,
+    outputDir: string, duration = 0): Opt[void] =
   if not dirExists(corpusDir):
     # libFuzzer is OK when starting with empty corpus dir
     mkDir(corpusDir)
+  if not dirExists(outputDir):
+    mkDir(outputDir)
 
-  exec &"{q target} {q corpusDir}"
+  let durArg = if duration > 0: " -max_total_time=" & $duration else: ""
+  echo &"{q target}{durArg} -artifact_prefix={q outputDir} {q corpusDir}"
+  if execCmd(
+      &"{q target}{durArg} -artifact_prefix={q outputDir} {q corpusDir}") != 0:
+    return err()
+  ok()
 
 proc honggfuzzCompile*(target: string) =
-  let honggfuzzOptions = &"-d:llvmFuzzer --noMain {honggfuzzClang}"
+  let honggfuzzOptions = &"-d:llvmFuzzer -d:honggfuzz --noMain {honggfuzzClang}"
   let compileCmd = &"nim c {defaultFlags} {honggfuzzOptions} {q target}"
   exec compileCmd
 
-proc honggfuzzExec*(target: string, corpusDir: string, outputDir: string) =
-  #if not dirExists(corpusDir):
-  #  # libFuzzer is OK when starting with empty corpus dir
-  #  mkDir(corpusDir)
+proc honggfuzzExec*(
+    target: string, corpusDir: string,
+    outputDir: string, duration = 0): Opt[void] =
+  if not dirExists(corpusDir):
+    mkDir(corpusDir)
 
   # TODO:
   # Other useful parameters:
@@ -129,25 +151,63 @@ proc honggfuzzExec*(target: string, corpusDir: string, outputDir: string) =
   #   New coverage (beyond the dry-run fuzzing phase) is written to this separate directory
   # --dict|-w VALUE
   #   Dictionary file. Format:http://llvm.org/docs/LibFuzzer.html#dictionaries
-  exec &"honggfuzz --persistent --input {q corpusDir} --output {q outputDir} -- {q target}"
+  let durArg = if duration > 0: " --run_time " & $duration else: ""
+  echo &"honggfuzz --persistent --exit_upon_crash{durArg} " &
+      &"--input {q corpusDir} --crashdir {q outputDir} -- {q target}"
+  if execCmd(
+      &"honggfuzz --persistent --exit_upon_crash{durArg} " &
+      &"--input {q corpusDir} --crashdir {q outputDir} -- {q target}") != 0:
+    return err()
+  ok()
 
-proc runFuzzer*(targetPath: string, fuzzer: FuzzingEngine, corpusDir: string) =
-  let
-    (path, target, ext) = splitFile(targetPath)
-    compiledExe = addFileExt(path / target, ExeExt)
-    corpusDir = if corpusDir.len > 0: corpusDir
-                else: path / "corpus"
-
+proc compileFuzzer*(targetPath: string, fuzzer: FuzzingEngine) =
   case fuzzer
   of afl:
-    aflCompile(targetPath, clang)
-    aflExec(compiledExe, corpusDir, path / "results")
-
+    aflCompile(targetPath, clangFast)
   of libFuzzer:
     libFuzzerCompile(targetPath)
-    libFuzzerExec(compiledExe, corpusDir)
-
   of honggfuzz:
     honggfuzzCompile(targetPath)
-    honggfuzzExec(compiledExe, corpusDir, path / "results")
 
+proc runFuzzer*(
+    targetPath: string, fuzzer: FuzzingEngine,
+    corpusDir = "", duration = 0): Opt[void] =
+  let
+    oid = genOid()
+    compiledExe = changeFileExt(targetPath, ExeExt)
+    corpusDir = if corpusDir.len > 0: corpusDir
+                else: compiledExe & "-" & $fuzzer & "-corpus-" & $oid & "/"
+
+  compileFuzzer(targetPath, fuzzer)
+
+  let
+    outputDir = compiledExe & "-" & $fuzzer & "-results-" & $oid & "/"
+    res =
+      case fuzzer
+      of afl:
+        aflExec(compiledExe, corpusDir, outputDir, duration)
+      of libFuzzer:
+        libFuzzerExec(compiledExe, corpusDir, outputDir, duration)
+      of honggfuzz:
+        honggfuzzExec(compiledExe, corpusDir, outputDir, duration)
+
+  let crashesDir =
+    if fuzzer == afl:
+      outputDir / "fuzzer01" / "crashes"
+    else:
+      outputDir
+  for path in walkDirRec(crashesDir):
+    echo "================================================================================"
+    echo "Fuzzer '" & $fuzzer & "' detected crash during " & targetPath & ":"
+    echo "- " & path
+    echo "--------------------------------------------------------------------------------"
+    echo readAllBytes(path).get(@[]).toHex()
+    echo "================================================================================"
+    return err()
+
+  if res.isErr:
+    echo "================================================================================"
+    echo "Fuzzer '" & $fuzzer & "' detected problem during " & targetPath &
+      " but did not produce any test vectors in " & outputDir
+    echo "================================================================================"
+  res

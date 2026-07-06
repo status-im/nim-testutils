@@ -452,7 +452,7 @@ proc main(): int =
     let testFiles = scanTestPath(config.path)
     if testFiles.len == 0:
       styledEcho(styleBright, "No test files found")
-      result = 1
+      QuitFailure
     else:
       var
         tests = testFiles.mapIt config.parseTestFile(it)
@@ -468,18 +468,27 @@ proc main(): int =
           tests = backends[backend]
         try:
           if OK != config.performTesting(backend, tests):
-            quit QuitFailure
+            return QuitFailure
         finally:
           backends.del(backend)
 
       for backend, tests in backends.pairs:
         assert backend != ""
         if OK != config.performTesting(backend, tests):
-          quit QuitFailure
+          return QuitFailure
+
+      QuitSuccess
+
   of Command.fuzz:
-    runFuzzer(config.target, config.fuzzer, config.corpusDir)
+    if config.target.runFuzzer(
+        config.fuzzer, config.corpusDir, config.duration).isErr:
+      const QuitFuzzFailure = 77
+      QuitFuzzFailure
+    else:
+      QuitSuccess
+
   of noCommand:
-    discard
+    QuitSuccess
 
 when isMainModule:
   quit main()

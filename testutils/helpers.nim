@@ -79,7 +79,7 @@ proc parseCompileStream*(p: Process, output: Stream): CompileInfo =
        suc = line
 
       if err != "":
-       result.fullMsg.add(line.string & "\p")
+       result.fullMsg.add(line & "\p")
     else:
      result.exitCode = peekExitCode(p)
      if result.exitCode != -1:

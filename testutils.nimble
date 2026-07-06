@@ -41,3 +41,30 @@ proc execTest(test: string) =
 
 task test, "run tests for travis":
   execTest("tests")
+
+let
+  fuzzSeconds = getEnv("FUZZ_SECONDS", "10")
+  fuzzTime =
+    if fuzzSeconds == "": ""
+    else: " --duration=" & fuzzSeconds & " "
+
+import std/os
+proc execFuzz(test: string, fuzzer: string) =
+  execCmd "nim c -d:release -r ntu fuzz --fuzzer=" & fuzzer & fuzzTime & test
+
+task fuzz, "run fuzzing tests":
+  execCmd "nim c -d:release -r tests/tfuzzing.nim"
+
+  for fuzzer in ["libFuzzer", "honggfuzz", "afl"]:
+    when defined(macos) or defined(macosx):
+      if fuzzer == "honggfuzz":
+        continue  # Not supported
+
+    var didFail = false
+    try:
+      execFuzz("tests/fuzzing/fuzz_bug.nim", fuzzer)
+    except OSError:
+      didFail = true
+    doAssert didFail
+
+    execFuzz("tests/fuzzing/fuzz_ok.nim", fuzzer)
