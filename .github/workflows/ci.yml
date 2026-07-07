@@ -34,7 +34,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install engines (Linux)
+      - name: Install fuzzing engines (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
@@ -50,7 +50,7 @@ jobs:
           sudo apt-get install -y afl++
           sudo afl-system-config
 
-      - name: Install engines (macOS)
+      - name: Install fuzzing engines (macOS)
         if: runner.os == 'macOS'
         run: |
           brew update
