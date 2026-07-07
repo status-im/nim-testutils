@@ -48,7 +48,6 @@ let
     if fuzzSeconds == "": ""
     else: " --duration=" & fuzzSeconds & " "
 
-import std/os
 proc execFuzz(test: string, fuzzer: string) =
   execCmd "nim c -d:release -r ntu fuzz --fuzzer=" & fuzzer & fuzzTime & test
 
@@ -58,7 +57,7 @@ task fuzz, "run fuzzing tests":
   for fuzzer in ["libFuzzer", "honggfuzz", "afl"]:
     when defined(macos) or defined(macosx):
       if fuzzer == "honggfuzz":
-        continue  # Not supported
+        continue
 
     var didFail = false
     try:
