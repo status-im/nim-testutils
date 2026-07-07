@@ -7,6 +7,7 @@ description   = "A unittest framework"
 license       = "Apache License 2.0"
 skipDirs      = @["tests"]
 bin           = @["ntu"]
+installFiles  = @["scripts/install_honggfuzz.sh"]
 #srcDir        = "testutils"
 
 requires "nim >= 1.6.0",
