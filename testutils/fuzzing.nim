@@ -1,26 +1,21 @@
-import std/[os, streams, strutils, macros], stew/ptrops
+import std/[os, streams, strutils, macros], system/ansi_c, stew/ptrops
 
 when not defined(windows):
   import posix
 
-proc suicide() =
-  # For code we want to fuzz, SIGSEGV is needed on unwanted exceptions.
-  # However, this is only needed when fuzzing with afl.
-  when not defined(windows):
-    discard kill(getpid(), SIGSEGV)
-  else:
-    discard
-
 template fuzz(body) =
-  when defined(llvmFuzzer):
+  try:
     body
-  else:
+  except Exception as exc:
     try:
-      body
-    except Exception as e:
-      echo "Fuzzer input created exception: name=", e.name,
-        " msg=", e.msg, " trace=", e.repr
-      suicide()
+      echo "Fuzzed code raised exception:" &
+        " name=" & $exc.name & " msg=" & exc.msg & "\n" & $getStackTrace(exc)
+    except Exception:
+      echo "Fuzzed code raised exception"
+    finally:
+      when defined(llvmFuzzer) and not defined(honggfuzz):
+        quit QuitFailure
+      c_abort()
 
 when not defined(llvmFuzzer):
   proc readStdin(): seq[byte] =
@@ -28,7 +23,7 @@ when not defined(llvmFuzzer):
             else: newFileStream(stdin)
     if s.isNil:
       echo "Error opening input stream"
-      suicide()
+      quit QuitFailure
     # We use binary files as with hex we can get lots of "not hex" failures
     var input = s.readAll()
     s.close()
@@ -85,7 +80,7 @@ template test*(body: untyped): untyped =
       template payload(): auto =
         makeOpenArray(data, len)
 
-      body
+      fuzz: body
   else:
     when not defined(windows):
       var payload {.inject.} = readStdin()

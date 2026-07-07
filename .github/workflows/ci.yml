@@ -34,17 +34,51 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install engines (Linux)
+      - name: Install Nim
+        uses: jiro4989/setup-nim-action@v2
+        with:
+          nim-version: 'stable'
+
+      - name: Install fuzzing engines (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang afl++
+
+          # libFuzzer
+          sudo apt-get install -y clang
+
+          # honggfuzz
           bash scripts/install_honggfuzz.sh
           echo "/opt/honggfuzz/usr/local/bin" >> "$GITHUB_PATH"
 
-      - name: Install engines (macOS)
+          # afl
+          sudo apt-get install -y afl++
+          sudo afl-system-config
+
+      - name: Install fuzzing engines (macOS)
         if: runner.os == 'macOS'
         run: |
-          brew install llvm afl++
+          brew update
+
+          # libFuzzer
+          brew install llvm
+          echo "/opt/homebrew/opt/llvm/bin" >> "$GITHUB_PATH"
+
+          # honggfuzz
           bash scripts/install_honggfuzz.sh
           echo "/opt/honggfuzz/usr/local/bin" >> "$GITHUB_PATH"
+
+          # afl
+          brew install afl++
+          sudo afl-system-config
+
+      - name: Run fuzzing tests
+        run: |
+          nimble fuzz | tee out.txt
+          for fuzzer in "libFuzzer" "honggfuzz" "afl"; do
+            if [[ "$(uname -s)" == Darwin ]] && [[ $fuzzer == "honggfuzz" ]]; then
+              continue
+            fi
+            (( $(grep -o "'$fuzzer' detected crash during" out.txt | wc -l) == 1 ))
+          done
+          ! grep -q "did not produce any test vectors" out.txt

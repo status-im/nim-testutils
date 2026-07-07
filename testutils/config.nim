@@ -33,6 +33,7 @@ const
   --fuzzer:libFuzzer         The fuzzing engine to use.
                              Possible values: libFuzzer, honggfuzz, afl
   --corpus:<path>            A directory with initial input cases
+  --duration:<seconds>       Stop fuzzing after this many seconds (0 = no limit)
 
   """.unindent.strip
 
@@ -71,6 +72,7 @@ type
       fuzzer*: FuzzingEngine
       corpusDir*: string
       target*: string
+      duration*: int
     of noCommand:
       discard
 
@@ -176,6 +178,8 @@ proc processArguments*(): TestConfig =
           result.fuzzer = parseEnum[FuzzingEngine](value)
         of "c", "corpus":
           result.corpusDir = absolutePath(value)
+        of "d", "duration":
+          result.duration = parseInt(value)
         else:
           quit(Usage)
       else:
