@@ -34,6 +34,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install Nim
+        uses: jiro4989/setup-nim-action@v2
+        with:
+          nim-version: 'stable'
+
       - name: Install fuzzing engines (Linux)
         if: runner.os == 'Linux'
         run: |
@@ -66,11 +71,6 @@ jobs:
           # afl
           brew install afl++
           sudo afl-system-config
-
-      - name: Install Nim
-        uses: jiro4989/setup-nim-action@v2
-        with:
-          nim-version: 'stable'
 
       - name: Run fuzzing tests
         run: |
