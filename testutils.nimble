@@ -56,7 +56,7 @@ task fuzz, "run fuzzing tests":
   execCmd "nim c -d:release -r tests/tfuzzing.nim"
 
   for fuzzer in ["libFuzzer", "honggfuzz", "afl"]:
-    when defined(macos) or defined(macosx):
+    when defined(macosx):
       if fuzzer == "honggfuzz":
         continue
 
