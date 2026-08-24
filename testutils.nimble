@@ -1,7 +1,7 @@
 mode = ScriptMode.Verbose
 
 packageName   = "testutils"
-version       = "0.8.2"
+version       = "0.8.3"
 author        = "Status Research & Development GmbH"
 description   = "A unittest framework"
 license       = "Apache License 2.0"
@@ -10,9 +10,9 @@ bin           = @["ntu"]
 installFiles  = @["scripts/install_honggfuzz.sh"]
 #srcDir        = "testutils"
 
-requires "nim >= 1.6.0",
-         "stew",
-         "unittest2"
+requires "nim >= 1.6.18",
+         "stew >= 0.5.0",
+         "unittest2 >= 0.2.0"
 
 proc execCmd(cmd: string) =
   echo "execCmd: " & cmd
