@@ -10,7 +10,7 @@ bin           = @["ntu"]
 installFiles  = @["scripts/install_honggfuzz.sh"]
 #srcDir        = "testutils"
 
-requires "nim >= 2.0.10",
+requires "nim >= 1.6.18",
          "stew >= 0.5.0",
          "unittest2 >= 0.2.0"
 
@@ -25,11 +25,12 @@ proc execTest(test: string) =
   execCmd "nim c   --mm:refc -d:danger  -r " & test
   execCmd "nim cpp --mm:refc            -r " & test
   execCmd "nim cpp --mm:refc -d:danger  -r " & test
-  execCmd "nim c   --mm:orc          -f -r " & test
-  execCmd "nim c   --mm:orc -d:release  -r " & test
-  execCmd "nim c   --mm:orc -d:danger   -r " & test
-  execCmd "nim cpp --mm:orc             -r " & test
-  execCmd "nim cpp --mm:orc -d:danger   -r " & test
+  if (NimMajor, NimMinor) > (1, 6):
+    execCmd "nim c   --mm:orc         -f -r " & test
+    execCmd "nim c   --mm:orc -d:release -r " & test
+    execCmd "nim c   --mm:orc -d:danger  -r " & test
+    execCmd "nim cpp --mm:orc            -r " & test
+    execCmd "nim cpp --mm:orc -d:danger  -r " & test
 
   execCmd "nim c   --gc:arc --exceptions:goto -r " & test
   when false:
