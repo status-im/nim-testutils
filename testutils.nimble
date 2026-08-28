@@ -11,6 +11,7 @@ installFiles  = @["scripts/install_honggfuzz.sh"]
 #srcDir        = "testutils"
 
 requires "nim >= 1.6.18",
+         "results >= 0.5.0",
          "stew >= 0.5.0",
          "unittest2 >= 0.2.0"
 
