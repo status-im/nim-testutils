@@ -69,8 +69,12 @@ task test_asan, "Run all tests with ASAN":
       " --passC:-fno-sanitize-recover=undefined" &
       " --passC:-fno-sanitize-merge" &
       " --passC:-fno-omit-frame-pointer"
-    for args in testArguments:
-      run args & asanArgs, "ntu", "test tests"
+    try:
+      putEnv("NIMFLAGS", flags & asanArgs)  # Apply to programs compiled by ntu
+      for args in testArguments:
+        run args & asanArgs, "ntu", "test tests"
+    finally:
+      putEnv("NIMFLAGS", flags)
 
 let
   fuzzSeconds = getEnv("FUZZ_SECONDS", "10")

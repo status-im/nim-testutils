@@ -81,10 +81,11 @@ proc logFailure(test: TestSpec; error: TestError;
                resetStyle, data[0])
 
   styledEcho(fgCyan, styleBright, "compiler: ", resetStyle,
-             "$# $# $# $#" % [defaultOptions,
-                              test.flags,
-                              test.config.compilationFlags,
-                              test.source])
+             "$# $# $# $# $#" % [defaultOptions,
+                                 getEnv("NIMFLAGS"),
+                                 test.flags,
+                                 test.config.compilationFlags,
+                                 test.source])
 
 template withinDir(dir: string; body: untyped): untyped =
   ## run the body with a specified directory, returning to current dir
@@ -174,6 +175,7 @@ proc compile(test: TestSpec; backend: string): TestStatus =
     cmd &= " --nimcache:" & test.config.cache(backend)
     cmd &= " --out:" & binary
     cmd &= " " & defaultOptions
+    cmd &= " " & getEnv("NIMFLAGS")
     cmd &= " " & test.flags
     cmd &= " " & test.config.compilationFlags
     cmd &= " " & test.source.quoteShell

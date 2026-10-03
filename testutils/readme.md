@@ -79,6 +79,13 @@ added in a test file:
 --opt:size
 ```
 
+Options from the `NIMFLAGS` environment variable will also be forwarded to the
+nim compiler, at lower precedence than options from the test files.
+
+```sh
+$ NIMFLAGS="--mm:orc" ntu test tests
+```
+
 ### Verifying Expected Output
 
 For outputs to be compared, the output string should be set to the output name
