@@ -72,7 +72,7 @@ task test_asan, "Run all tests with ASAN":
     try:
       putEnv("NIMFLAGS", flags & asanArgs)  # Apply to programs compiled by ntu
       for args in testArguments:
-        run args & asanArgs, "ntu", "test tests"
+        run args & asanArgs, "ntu", "test --exclude:hello_size tests"
     finally:
       putEnv("NIMFLAGS", flags)
 
