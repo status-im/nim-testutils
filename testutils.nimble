@@ -15,34 +15,66 @@ requires "nim >= 1.6.18",
          "stew >= 0.5.0",
          "unittest2 >= 0.2.0"
 
-proc execCmd(cmd: string) =
-  echo "execCmd: " & cmd
-  exec cmd
+let nimc = getEnv("NIMC", "nim") # Which nim compiler to use
+let lang = getEnv("NIMLANG", "c") # Which backend (c/cpp/js)
+let flags = getEnv("NIMFLAGS", "") # Extra flags for the compiler
+let verbose = getEnv("V", "") notin ["", "0"]
+let platform = getEnv("PLATFORM", "")
+let testArguments = [
+  "-d:debug",
+  "-d:release",
+  "-d:danger",
+]
 
-proc execTest(test: string) =
-  let test = "ntu test " & test
-  execCmd "nim c   --mm:refc         -f -r " & test
-  execCmd "nim c   --mm:refc -d:release -r " & test
-  execCmd "nim c   --mm:refc -d:danger  -r " & test
-  execCmd "nim cpp --mm:refc            -r " & test
-  execCmd "nim cpp --mm:refc -d:danger  -r " & test
-  if (NimMajor, NimMinor) > (1, 6):
-    execCmd "nim c   --mm:orc         -f -r " & test
-    execCmd "nim c   --mm:orc -d:release -r " & test
-    execCmd "nim c   --mm:orc -d:danger  -r " & test
-    execCmd "nim cpp --mm:orc            -r " & test
-    execCmd "nim cpp --mm:orc -d:danger  -r " & test
+from std/os import quoteShell
 
-  execCmd "nim c   --gc:arc --exceptions:goto -r " & test
-  when false:
-    # we disable gc:arc test here because Nim cgen
-    # generate something not acceptable for clang
-    # and failed on windows 64 bit too
-    # TODO https://github.com/nim-lang/Nim/issues/22101
-    execCmd "nim cpp --gc:arc --exceptions:goto -r " & test
+let cfg =
+  " --styleCheck:usages --styleCheck:error" &
+  (if verbose: "" else: " --verbosity:0") &
+  " --skipParentCfg --skipUserCfg --outdir:build -f " &
+  quoteShell("--nimcache:build/nimcache/$projectName")
 
-task test, "run tests for travis":
-  execTest("tests")
+proc build(args, path: string, cmdArgs = "") =
+  exec nimc & " " & lang & " " & cfg & " " & flags & " " & args & " " & path & " " & cmdArgs
+
+proc run(args, path: string, cmdArgs = "") =
+  try:
+    putEnv("NIMFLAGS", flags & " " & args)  # Apply to programs compiled by ntu
+    build args & " -r", path, cmdArgs
+  finally:
+    putEnv("NIMFLAGS", flags)
+
+task test, "Run all tests":
+  for args in testArguments:
+    run args & " --mm:refc", "ntu", "test tests"
+    if (NimMajor, NimMinor) > (1, 6):
+      run args & " --mm:orc", "ntu", "test tests"
+
+  # Nim cgen generates something not acceptable for clang in C++ mode
+  # TODO https://github.com/nim-lang/Nim/issues/22101
+  if lang == "c" or (NimMajor, NimMinor) >= (2, 2):
+    run "--mm:arc --exceptions:goto", "ntu", "test tests"
+
+task test_asan, "Run all tests with ASAN":
+  if platform != "x86" and (NimMajor, NimMinor) >= (2, 2):
+    try:
+      exec "echo '#if __clang_major__ < 20\n#error\n#endif' | clang -E - >/dev/null"
+    except OSError:
+      return
+
+    # https://clang.llvm.org/docs/AddressSanitizer.html
+    putEnv("ASAN_OPTIONS", "detect_leaks=0:detect_stack_use_after_return=1")
+    # https://clang.llvm.org/docs/UndefinedBehaviorSanitizer.html
+    putEnv("UBSAN_OPTIONS", "print_stacktrace=1")
+    let asanArgs =
+      " --mm:orc -d:useMalloc --cc:clang --debugger:native" &
+      " --passC:-fsanitize=address,undefined" &
+      " --passL:-fsanitize=address,undefined" &
+      " --passC:-fno-sanitize-recover=undefined" &
+      " --passC:-fno-sanitize-merge" &
+      " --passC:-fno-omit-frame-pointer"
+    for args in testArguments:
+      run args & asanArgs, "ntu", "test --exclude:hello_size tests"
 
 let
   fuzzSeconds = getEnv("FUZZ_SECONDS", "10")
@@ -51,10 +83,10 @@ let
     else: " --duration=" & fuzzSeconds & " "
 
 proc execFuzz(test: string, fuzzer: string) =
-  execCmd "nim c -d:release -r ntu fuzz --fuzzer=" & fuzzer & fuzzTime & test
+  run "-d:release", "ntu", "fuzz --fuzzer=" & fuzzer & fuzzTime & test
 
-task fuzz, "run fuzzing tests":
-  execCmd "nim c -d:release -r tests/tfuzzing.nim"
+task fuzz, "Run fuzzing tests":
+  run "-d:release", "tests/tfuzzing"
 
   for fuzzer in ["libFuzzer", "honggfuzz", "afl"]:
     when defined(macosx):
