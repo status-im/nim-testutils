@@ -38,7 +38,11 @@ proc build(args, path: string, cmdArgs = "") =
   exec nimc & " " & lang & " " & cfg & " " & flags & " " & args & " " & path & " " & cmdArgs
 
 proc run(args, path: string, cmdArgs = "") =
-  build args & " -r", path, cmdArgs
+  try:
+    putEnv("NIMFLAGS", flags & " " & args)  # Apply to programs compiled by ntu
+    build args & " -r", path, cmdArgs
+  finally:
+    putEnv("NIMFLAGS", flags)
 
 task test, "Run all tests":
   for args in testArguments:
@@ -69,12 +73,8 @@ task test_asan, "Run all tests with ASAN":
       " --passC:-fno-sanitize-recover=undefined" &
       " --passC:-fno-sanitize-merge" &
       " --passC:-fno-omit-frame-pointer"
-    try:
-      putEnv("NIMFLAGS", flags & asanArgs)  # Apply to programs compiled by ntu
-      for args in testArguments:
-        run args & asanArgs, "ntu", "test --exclude:hello_size tests"
-    finally:
-      putEnv("NIMFLAGS", flags)
+    for args in testArguments:
+      run args & asanArgs, "ntu", "test --exclude:hello_size tests"
 
 let
   fuzzSeconds = getEnv("FUZZ_SECONDS", "10")
