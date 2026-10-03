@@ -52,7 +52,7 @@ task test, "Run all tests":
     run "--mm:arc --exceptions:goto", "ntu", "test tests"
 
 task test_asan, "Run all tests with ASAN":
-  if platform != "x86" and (NimMajor, NimMinor) > (1, 6):
+  if platform != "x86" and (NimMajor, NimMinor) >= (2, 2):
     try:
       exec "echo '#if __clang_major__ < 20\n#error\n#endif' | clang -E - >/dev/null"
     except OSError:
