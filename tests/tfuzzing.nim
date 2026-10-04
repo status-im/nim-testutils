@@ -3,7 +3,11 @@ import std/[oids, os, osproc], unittest2, ../testutils/fuzzing_engines
 const BugSrc = """
 import testutils/fuzzing
 
+var initialized = false
+initialized = true  # Ensure NimMain was called
+
 test:
+  doAssert initialized
   doAssert payload.len < 4
 
   if payload.len > 2:
