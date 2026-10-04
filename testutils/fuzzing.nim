@@ -36,7 +36,7 @@ proc NimMain() {.importc: "NimMain".}
 # The default init, gets redefined when init template is used.
 template initImpl(): untyped =
   when defined(llvmFuzzer):
-    proc fuzzerInit(): cint {.exportc: "LLVMFuzzerInitialize".} =
+    proc fuzzerInit(): cint {.exportc: "LLVMFuzzerInitialize", dynlib.} =
       NimMain()
 
       return 0
@@ -56,7 +56,7 @@ template init*(body: untyped) {.dirty.} =
     template initImpl() {.dirty.} =
       bind NimMain
 
-      proc fuzzerInit(): cint {.exportc: "LLVMFuzzerInitialize".} =
+      proc fuzzerInit(): cint {.exportc: "LLVMFuzzerInitialize", dynlib.} =
         NimMain()
 
         body
@@ -76,7 +76,7 @@ template test*(body: untyped): untyped =
   initImpl()
   when defined(llvmFuzzer):
     proc fuzzerCall(data: ptr byte, len: csize):
-        cint {.exportc: "LLVMFuzzerTestOneInput".} =
+        cint {.exportc: "LLVMFuzzerTestOneInput", dynlib.} =
       template payload(): auto =
         makeOpenArray(data, len)
 
