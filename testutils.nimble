@@ -10,7 +10,7 @@ bin           = @["ntu"]
 installFiles  = @["scripts/install_honggfuzz.sh"]
 #srcDir        = "testutils"
 
-requires "nim >= 2.0.14",
+requires "nim >= 2.2.2",
          "results >= 0.5.0",
          "stew >= 0.6.0",
          "unittest2 >= 0.3.0"
@@ -49,10 +49,7 @@ task test, "Run all tests":
     run args & " --mm:refc", "ntu", "test tests"
     run args & " --mm:orc", "ntu", "test tests"
 
-  # Nim cgen generates something not acceptable for clang in C++ mode
-  # TODO https://github.com/nim-lang/Nim/issues/22101
-  if lang == "c" or (NimMajor, NimMinor) >= (2, 2):
-    run "--mm:arc --exceptions:goto", "ntu", "test tests"
+  run "--mm:arc --exceptions:goto", "ntu", "test tests"
 
 task test_asan, "Run all tests with ASAN":
   if platform != "x86":
