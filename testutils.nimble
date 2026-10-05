@@ -1,7 +1,7 @@
 mode = ScriptMode.Verbose
 
 packageName   = "testutils"
-version       = "0.8.5"
+version       = "0.9.0"
 author        = "Status Research & Development GmbH"
 description   = "A unittest framework"
 license       = "Apache License 2.0"
@@ -10,10 +10,10 @@ bin           = @["ntu"]
 installFiles  = @["scripts/install_honggfuzz.sh"]
 #srcDir        = "testutils"
 
-requires "nim >= 1.6.18",
+requires "nim >= 2.2.2",
          "results >= 0.5.0",
-         "stew >= 0.5.0",
-         "unittest2 >= 0.2.0"
+         "stew >= 0.6.0",
+         "unittest2 >= 0.3.0"
 
 let nimc = getEnv("NIMC", "nim") # Which nim compiler to use
 let lang = getEnv("NIMLANG", "c") # Which backend (c/cpp/js)
@@ -47,16 +47,12 @@ proc run(args, path: string, cmdArgs = "") =
 task test, "Run all tests":
   for args in testArguments:
     run args & " --mm:refc", "ntu", "test tests"
-    if (NimMajor, NimMinor) > (1, 6):
-      run args & " --mm:orc", "ntu", "test tests"
+    run args & " --mm:orc", "ntu", "test tests"
 
-  # Nim cgen generates something not acceptable for clang in C++ mode
-  # TODO https://github.com/nim-lang/Nim/issues/22101
-  if lang == "c" or (NimMajor, NimMinor) >= (2, 2):
-    run "--mm:arc --exceptions:goto", "ntu", "test tests"
+  run "--mm:arc --exceptions:goto", "ntu", "test tests"
 
 task test_asan, "Run all tests with ASAN":
-  if platform != "x86" and (NimMajor, NimMinor) >= (2, 2):
+  if platform != "x86":
     try:
       exec "echo '#if __clang_major__ < 20\n#error\n#endif' | clang -E - >/dev/null"
     except OSError:
@@ -79,7 +75,7 @@ task test_asan, "Run all tests with ASAN":
 let
   fuzzSeconds = getEnv("FUZZ_SECONDS", "10")
   fuzzTime =
-    if fuzzSeconds == "": ""
+    if fuzzSeconds == "": " "
     else: " --duration=" & fuzzSeconds & " "
 
 proc execFuzz(test: string, fuzzer: string) =
